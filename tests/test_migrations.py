@@ -418,5 +418,44 @@ class ChainRenameRuleTests(unittest.TestCase):
             self.assertIn("minecraft:chain", value)
 
 
+class SpawnRotationRuleTests(unittest.TestCase):
+    def test_upgrade_adds_zero_pitch(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            function = root / "data/demo/function/test.mcfunction"
+            function.parent.mkdir(parents=True, exist_ok=True)
+            function.write_text("spawnpoint @s ~ ~ ~ 90\nsetworldspawn ~ ~ ~ 90\n", encoding="utf-8")
+            rule = SpawnRotationRule()
+            rule.apply(MigrationContext(root, PackFormat(80), PackFormat(88), BuildPolicy()))
+            text = function.read_text(encoding="utf-8")
+            self.assertIn("spawnpoint @s ~ ~ ~ 90 0\n", text)
+            self.assertIn("setworldspawn ~ ~ ~ 90 0\n", text)
+
+    def test_zero_pitch_downgrades_losslessly(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [88, 0])
+            function = root / "data/demo/function/test.mcfunction"
+            function.parent.mkdir(parents=True, exist_ok=True)
+            function.write_text("spawnpoint @s ~ ~ ~ 90 0\n", encoding="utf-8")
+            rule = SpawnRotationRule()
+            rule.apply(MigrationContext(root, PackFormat(88), PackFormat(80), BuildPolicy()))
+            self.assertIn("spawnpoint @s ~ ~ ~ 90\n", function.read_text(encoding="utf-8"))
+
+    def test_nonzero_pitch_downgrade_requires_lossy_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [88, 0])
+            function = root / "data/demo/function/test.mcfunction"
+            function.parent.mkdir(parents=True, exist_ok=True)
+            function.write_text("spawnpoint @s ~ ~ ~ 90 30\n", encoding="utf-8")
+            rule = SpawnRotationRule()
+            strict = rule.apply(MigrationContext(root, PackFormat(88), PackFormat(80), BuildPolicy()))
+            self.assertEqual({item.code for item in strict.diagnostics}, {"spawnpoint-pitch-cannot-downgrade"})
+            permitted = rule.apply(
+                MigrationContext(root, PackFormat(88), PackFormat(80), BuildPolicy(allow_lossy=True))
+            )
+            self.assertIn("spawnpoint-pitch-cannot-downgrade", {item.code for item in permitted.diagnostics})
+            self.assertTrue(all(item.severity.value < 30 for item in permitted.diagnostics))
+
+
 if __name__ == "__main__":
     unittest.main()
