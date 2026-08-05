@@ -1,0 +1,82 @@
+[project]
+name = "dpcompat"
+version = "0.3.1"
+description = "A conservative Minecraft Java data-pack compatibility compiler for stable 1.21.4+ releases"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { file = "LICENSE" }
+authors = [{ name = "Kingcq" }]
+keywords = ["minecraft", "datapack", "migration", "overlay", "compatibility"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Games/Entertainment",
+  "Topic :: Software Development :: Build Tools",
+]
+dependencies = [
+  "pydantic>=2.11,<3",
+  "rich>=14,<16",
+]
+
+[project.scripts]
+dpcompat = "dpcompat.cli:main"
+
+[project.entry-points."dpcompat.rules"]
+# Third-party packages register providers in this group. The project itself has no entry here.
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["dpcompat"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/dpcompat",
+  "/docs",
+  "/examples",
+  "/tests",
+  "/README.md",
+  "/LICENSE",
+  "/CHANGELOG.md",
+  "/dpcompat.example.toml",
+  "/Makefile",
+]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-config --strict-markers"
+testpaths = ["tests"]
+xfail_strict = true
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+src = ["dpcompat", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["dpcompat"]
+warn_unreachable = true
+show_error_codes = true
+pretty = true
+
+[dependency-groups]
+dev = [
+  "mypy>=1.17,<2",
+  "pytest>=8.4,<10",
+  "pytest-cov>=6.2,<8",
+  "ruff>=0.12,<1",
+]
