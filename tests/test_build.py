@@ -168,6 +168,36 @@ class EngineBuildTests(unittest.TestCase):
             self.assertEqual(report["policy"]["allow_lossy"], False)
             self.assertIn("stable_releases_only", report["scope"])
 
+    def test_source_diagnostics_are_not_duplicated_after_overlay_flattening(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            root = make_pack(base / "pack")
+            (root / "pack.mcmeta").write_text(
+                json.dumps(
+                    {
+                        "pack": {"pack_format": 61, "description": "test"},
+                        "overlays": {"entries": [{"directory": "fmt61", "formats": 61}]},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            write(root, "data/demo/tags/README.md", "Contributor notes\n")
+            write(root, "fmt61/data/demo/function/load.mcfunction", "say overlay\n")
+
+            detection, results, _ = compile_pack(
+                root,
+                [resolve_profile("1.21.4")],
+                base / "out",
+                universal=False,
+                source_format=PackFormat(61),
+                emit_archives=False,
+            )
+
+            warning_codes = [item.code for item in detection.diagnostics]
+            self.assertEqual(warning_codes.count("non-runtime-file-invalid-path"), 1)
+            self.assertEqual(warning_codes.count("source-overlays-flattened"), 1)
+            self.assertTrue(results[0].successful)
+
 
 if __name__ == "__main__":
     unittest.main()

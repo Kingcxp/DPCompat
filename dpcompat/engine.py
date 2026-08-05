@@ -67,6 +67,18 @@ def _enforce_policy(diagnostics: list[Diagnostic], policy: BuildPolicy) -> None:
             item.severity = Severity.ERROR
 
 
+def _extend_unique_diagnostics(target: list[Diagnostic], additions: list[Diagnostic]) -> None:
+    """Append diagnostics while preserving order and suppressing exact duplicates."""
+
+    existing = {item.model_dump_json() for item in target}
+    for item in additions:
+        signature = item.model_dump_json()
+        if signature in existing:
+            continue
+        target.append(item)
+        existing.add(signature)
+
+
 def _fallback_for(profile: VersionProfile, fallbacks: dict[str, Path]) -> Path | None:
     return fallbacks.get(profile.game_version) or fallbacks.get(str(profile.pack_format))
 
@@ -332,7 +344,7 @@ def compile_pack(
                 )
             )
         source_scan = scan_pack(effective_source, target=detection.source_format)
-        detection.diagnostics.extend(source_scan.diagnostics)
+        _extend_unique_diagnostics(detection.diagnostics, source_scan.diagnostics)
         _enforce_policy(detection.diagnostics, policy)
         if any(item.severity >= Severity.ERROR for item in detection.diagnostics):
             return detection, [], None
