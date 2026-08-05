@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.1] - 2026-08-05
+
+### Added
+
+- TUI: top navigation bar with plugin management and quit buttons, file-tree browsing for the pack and output folders, optional validated output subfolder creation, two-column target and policy layouts, policy explanations, and colored buttons.
+- TUI: "create plugin template" flow that picks a location from the file tree, optionally creates a same-named subfolder, and scaffolds a ready-to-install plugin project (`plugins.py` helper: `scaffold_plugin_template`).
+
+### Fixed
+
+- TUI: static widgets in horizontal rows are given explicit widths so browse buttons and plugin badges are no longer pushed off-screen.
+- TUI: plugin cards use content-sized heights instead of the container `1fr` default, which previously squeezed every card into empty-looking boxes.
+- Plugin store now lives next to the installed package (`site-packages/dpcompat/plugins`), so plugins installed in one Python environment never affect another dpcompat; `DPCOMPAT_PLUGIN_DIR` overrides it. The directory is excluded from wheel/sdist builds.
+
 ## [0.4.0] - 2026-08-05
 
 ### Added
