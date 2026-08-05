@@ -1,0 +1,10 @@
+{
+  "type": "minecraft:generic",
+  "pools": [],
+  "components": {
+    "minecraft:dyed_color": {
+      "rgb": 255,
+      "show_in_tooltip": false
+    }
+  }
+}
