@@ -102,7 +102,7 @@ class EngineBuildTests(unittest.TestCase):
     def test_explicit_source_format_is_recorded_as_override(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = make_pack(Path(temp_dir))
-            detection, results, _ = compile_pack(
+            detection, _, _ = compile_pack(
                 root,
                 [resolve_profile("1.21.4")],
                 Path(temp_dir) / "out",

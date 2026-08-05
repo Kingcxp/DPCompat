@@ -88,7 +88,7 @@ class PackIoTests(unittest.TestCase):
     def test_ambiguous_pack_roots_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             base = Path(temp_dir)
-            root = make_pack(base / "pack")
+            make_pack(base / "pack")
             make_pack(base / "other")
             with self.assertRaisesRegex(ValueError, "Multiple possible"), materialize_source(base):
                 pass

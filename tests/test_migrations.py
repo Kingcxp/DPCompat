@@ -13,6 +13,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from dpcompat import nbt
 from dpcompat.commands import (
     is_zero_rotation,
     iter_execute_segments,
@@ -20,15 +21,14 @@ from dpcompat.commands import (
     parse_command_line,
 )
 from dpcompat.entity_data import downgrade_entity_nbt, upgrade_entity_nbt
-from dpcompat import nbt
 from dpcompat.fallback import apply_fallback_files, load_fallback, resolve_with_fallback
 from dpcompat.migrations.base import MigrationContext
 from dpcompat.migrations.commands import HorseSaddleSlotRule, SpawnRotationRule
 from dpcompat.migrations.entities import EntitySnbtRule
 from dpcompat.migrations.identifiers import ChainRenameRule
+from dpcompat.migrations.items import ItemTooltipComponentsRule
 from dpcompat.migrations.recipes import Recipe26Rule, TimeCheckClockRule
 from dpcompat.migrations.resources import FilteredLootRule, TestEnvironmentClockRule, TimelineClockRule
-from dpcompat.migrations.items import ItemTooltipComponentsRule
 from dpcompat.migrations.structures import StructureEntityNbtRule
 from dpcompat.migrations.text import TextComponentRule
 from dpcompat.models import BuildPolicy, PackFormat, Severity
@@ -51,7 +51,7 @@ class CommandParserTests(unittest.TestCase):
         self.assertTrue(parsed.tokens[2].value.startswith("{"))
 
     def test_quoted_and_bracket_content_stays_in_one_token(self) -> None:
-        line = 'summon minecraft:zombie ~ ~ ~ {FallDistance:1.0f,ArmorItems:[{},{},{}]}'
+        line = "summon minecraft:zombie ~ ~ ~ {FallDistance:1.0f,ArmorItems:[{},{},{}]}"
         parsed = parse_command_line(line)
         self.assertEqual([token.value for token in parsed.tokens][:2], ["summon", "minecraft:zombie"])
         self.assertEqual(parsed.tokens[-1].value, "{FallDistance:1.0f,ArmorItems:[{},{},{}]}")
@@ -80,18 +80,14 @@ class CommandParserTests(unittest.TestCase):
 
 class TextComponentTests(unittest.TestCase):
     def test_click_event_upgrade_maps_action_specific_value(self) -> None:
-        value = upgrade_component(
-            {"text": "x", "clickEvent": {"action": "run_command", "value": "/say hi"}}
-        )
+        value = upgrade_component({"text": "x", "clickEvent": {"action": "run_command", "value": "/say hi"}})
         self.assertEqual(
             value,
             {"text": "x", "click_event": {"action": "run_command", "command": "/say hi"}},
         )
 
     def test_click_event_downgrade_restores_legacy_value(self) -> None:
-        value = downgrade_component(
-            {"text": "x", "click_event": {"action": "run_command", "command": "/say hi"}}
-        )
+        value = downgrade_component({"text": "x", "click_event": {"action": "run_command", "command": "/say hi"}})
         self.assertEqual(
             value,
             {"text": "x", "clickEvent": {"action": "run_command", "value": "/say hi"}},
@@ -217,8 +213,7 @@ class ItemTooltipRuleTests(unittest.TestCase):
             write(
                 root,
                 "data/demo/loot_table/test.json",
-                '{"pools":[],"components":'
-                '{"minecraft:dyed_color":{"rgb":123,"show_in_tooltip":false}}}\n',
+                '{"pools":[],"components":{"minecraft:dyed_color":{"rgb":123,"show_in_tooltip":false}}}\n',
             )
             rule = ItemTooltipComponentsRule()
             rule.apply(MigrationContext(root, PackFormat(61), PackFormat(71), BuildPolicy()))
@@ -377,7 +372,7 @@ class HorseSaddleSlotRuleTests(unittest.TestCase):
             root = make_pack(Path(temp_dir))
             function = root / "data/demo/function/test.mcfunction"
             function.parent.mkdir(parents=True, exist_ok=True)
-            function.write_text('data get entity @s horse.saddle\n', encoding="utf-8")
+            function.write_text("data get entity @s horse.saddle\n", encoding="utf-8")
             rule = HorseSaddleSlotRule()
             rule.apply(MigrationContext(root, PackFormat(61), PackFormat(71), BuildPolicy()))
             self.assertIn("horse.saddle", function.read_text(encoding="utf-8"))
@@ -474,7 +469,7 @@ class FilteredLootRuleTests(unittest.TestCase):
             rule.apply(MigrationContext(root, PackFormat(88), PackFormat(94, 1), BuildPolicy()))
             value = (root / "data/demo/item_modifier/test.json").read_text(encoding="utf-8")
             self.assertIn("on_pass", value)
-            self.assertNotIn("\"modifier\"", value)
+            self.assertNotIn('"modifier"', value)
 
     def test_on_fail_blocks_downgrade(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -606,7 +601,7 @@ class FallbackTests(unittest.TestCase):
             )
             write(spec.root, "data/demo/function/legacy.mcfunction", "say legacy fallback\n")
             target = make_pack(base / "target")
-            write(target, "data/demo/timeline/test.json", '{}\n')
+            write(target, "data/demo/timeline/test.json", "{}\n")
             application = apply_fallback_files(spec, target)
             self.assertFalse((target / "data/demo/timeline/test.json").exists())
             self.assertEqual(
@@ -651,11 +646,7 @@ class FallbackTests(unittest.TestCase):
             spec = load_fallback(
                 self._fallback_dir(
                     Path(temp_dir),
-                    manifest=(
-                        "[[resolve]]\n"
-                        'code = "never-emitted-code"\n'
-                        'reason = "Reviewed for future use."\n'
-                    ),
+                    manifest=('[[resolve]]\ncode = "never-emitted-code"\nreason = "Reviewed for future use."\n'),
                 )
             )
             application = apply_fallback_files(spec, make_pack(Path(temp_dir) / "target"))
@@ -740,9 +731,7 @@ class MacroAndNestedEntityTextTests(unittest.TestCase):
                 {item.code for item in result.diagnostics},
                 {"entity-text-component-unknown"},
             )
-            self.assertTrue(
-                all(item.compatibility.value == "unknown" for item in result.diagnostics)
-            )
+            self.assertTrue(all(item.compatibility.value == "unknown" for item in result.diagnostics))
 
 
 if __name__ == "__main__":

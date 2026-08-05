@@ -9,14 +9,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from dpcompat.migrations import BUILTIN_RULES
 from dpcompat.migrations.base import MigrationContext
 from dpcompat.migrations.sources import BUILTIN_RULE_SOURCES
 from dpcompat.models import BuildPolicy, PackFormat
 from dpcompat.rules import RuleRegistry, create_rule_registry, load_declarative_rule
 from dpcompat.rules.schema import DeclarativeRuleSpec
-
-import pytest
 from pydantic import ValidationError
 
 

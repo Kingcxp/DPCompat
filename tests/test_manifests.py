@@ -6,7 +6,6 @@ import unittest
 
 from dpcompat.manifests import feature_specs, identifier_minimums, resource_minimums
 from dpcompat.models import PackFormat
-
 from pydantic import ValidationError
 
 

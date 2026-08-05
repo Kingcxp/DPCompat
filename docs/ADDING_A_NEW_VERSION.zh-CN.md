@@ -74,8 +74,7 @@ class ExampleRule:
     def applies(self, source: PackFormat, target: PackFormat) -> bool:
         return crosses(source, target, self.boundary)
 
-    def apply(self, context: MigrationContext) -> RuleResult:
-        ...
+    def apply(self, context: MigrationContext) -> RuleResult: ...
 ```
 
 2. 在 `migrations/sources.py` 为 `id` 登记 Mojang 一手来源；registry 发现缺来源会直接失败；

@@ -26,6 +26,10 @@ def main() -> None:
         if path.is_dir():
             shutil.rmtree(path)
             print(f"removed {path.relative_to(root)}")
+    coverage_file = root / ".coverage"
+    if coverage_file.is_file():
+        coverage_file.unlink()
+        print(f"removed {coverage_file.relative_to(root)}")
     for path in root.rglob("__pycache__"):
         if path.is_dir():
             shutil.rmtree(path)
