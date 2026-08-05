@@ -40,6 +40,12 @@ uv run dpcompat versions
 uv run dpcompat inspect examples/simple_pack
 ```
 
+交互式 TUI（勾选目标版本、管理插件、启动迁移）：
+
+```bash
+uv run dpcompat tui
+```
+
 只规划，不写 ZIP：
 
 ```bash
@@ -65,6 +71,18 @@ uv run dpcompat build Bundle.zip --pack-root path/to/datapack --output dist
 也可在 `[build]` 中设置安全的相对 POSIX 路径 `pack_root`。DPCompat 只迁移所选数据包，不迁移同一 bundle 内的资源包。
 
 不传 `--target` 时使用配置中的目标，配置也未指定时构建所有登记正式版。`inspect`、`versions`、`rules` 和 `plan` 支持 `--json`；JSON 模式的标准输出不混入 Rich 进度信息。
+
+## 插件
+
+迁移规则以插件形式组织。内置规则分为 13 个具名插件（如 `gamerules@94.1`、`clocks@101.1`），用户插件是 `.py` 或 `.json` 文件，安装后与内置插件一样可以浏览、启用、禁用：
+
+```bash
+uv run dpcompat plugin list
+uv run dpcompat plugin install my_rules.py
+uv run dpcompat plugin disable clocks@101.1
+```
+
+插件目录默认 `~/.dpcompat/plugins`（可用 `DPCOMPAT_PLUGIN_DIR` 覆盖），启用状态持久化在 `plugins.toml`。TUI 的插件管理页提供同样的浏览、安装与开关操作。插件文件格式、元数据契约与安全要求见 [`docs/PLUGIN_DEVELOPMENT.zh-CN.md`](docs/PLUGIN_DEVELOPMENT.zh-CN.md)。
 
 ## 配置
 
@@ -176,8 +194,9 @@ powershell -ExecutionPolicy Bypass -File scripts/build.ps1 smoke
 
 最重要的维护文档：
 
-- [`docs/FROM_ZERO_FILE_BY_FILE.zh-CN.md`](docs/FROM_ZERO_FILE_BY_FILE.zh-CN.md)：C00–C53，从空目录逐文件编辑、验收与严密 commit；
+- [`docs/FROM_ZERO_FILE_BY_FILE.zh-CN.md`](docs/FROM_ZERO_FILE_BY_FILE.zh-CN.md)：C00–C56，从空目录逐文件编辑、验收与严密 commit；
 - [`docs/ADDING_A_NEW_VERSION.zh-CN.md`](docs/ADDING_A_NEW_VERSION.zh-CN.md)：登记新正式版、新 feature 与新迁移规则的完整步骤；
+- [`docs/PLUGIN_DEVELOPMENT.zh-CN.md`](docs/PLUGIN_DEVELOPMENT.zh-CN.md)：插件文件格式、安装/开关与安全要求；
 - [`docs/OFFICIAL_CHANGE_AUDIT.zh-CN.md`](docs/OFFICIAL_CHANGE_AUDIT.zh-CN.md)：官方变更与实现结论；
 - [`docs/ARCHITECTURE.zh-CN.md`](docs/ARCHITECTURE.zh-CN.md)：模块职责与数据流；
 - [`docs/RULE_AUTHORING.zh-CN.md`](docs/RULE_AUTHORING.zh-CN.md)：Python、entry point 与声明式规则；

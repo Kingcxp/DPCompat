@@ -79,6 +79,7 @@ powershell -ExecutionPolicy Bypass -File scripts/build.ps1 smoke
 | `tests/` | C46 |
 | `README.md`、`docs/`、社区文件 | C47 |
 | `.github/`、`CHANGELOG.md` | C48 |
+| `plugins.py`、`ui/`、`docs/PLUGIN_DEVELOPMENT.zh-CN.md` | C54–C55 |
 
 ---
 
@@ -1041,6 +1042,47 @@ git commit \
 ```
 
 ---
+
+## C54：插件存储与内置插件目录
+
+`plugins.py` 提供用户级插件存储：`DPCOMPAT_PLUGIN_DIR`（默认 `~/.dpcompat/plugins`）下的 `.py`/`.json` 插件文件，`plugins.toml` 持久化启用状态。内置规则按 `sources.py` 边界分组为 13 个具名插件，目录校验必须覆盖全部 `BUILTIN_RULES`。CLI 增加 `plugin install/remove/enable/disable/list`；`create_rule_registry` 接受 `enabled_rule_ids` 过滤，`cli._registry` 改走 `create_effective_registry`。插件文件格式与安全要求写入 `docs/PLUGIN_DEVELOPMENT.zh-CN.md`。
+
+### Commit
+
+```bash
+git add dpcompat/plugins.py dpcompat/rules/registry.py dpcompat/cli.py tests/test_plugins.py tests/test_cli.py
+```
+
+## C55：Textual TUI
+
+`ui/` 提供 Textual 界面：主屏选择数据包路径（含文件树浏览）、勾选目标版本与策略、启动迁移并输出日志；插件屏浏览/安装/开关插件。构建在 worker 线程执行，UI 更新经 `call_from_thread` 回主线程。`dpcompat tui` 入口；`tests/test_tui.py` 用 `run_test` 冒烟。
+
+### Commit
+
+```bash
+git add dpcompat/ui dpcompat/cli.py tests/test_tui.py pyproject.toml uv.lock
+```
+
+## C56：发布 0.4.0
+
+同步版本号、CHANGELOG、README 与文档；pyright 加入 dev 依赖与 `typecheck` 门禁；用 `test_datapack/`（真实包，不入库）做静态验证。
+
+### 最终验收
+
+```bash
+uv lock --check
+make check
+make smoke
+uv build
+uv run dpcompat plugin list
+uv run dpcompat tui
+```
+
+### Commit
+
+```bash
+git add README.md CHANGELOG.md pyproject.toml uv.lock dpcompat/__init__.py Makefile scripts/build.ps1 docs
+```
 
 ## 2. 从 C04 继续时的建议
 

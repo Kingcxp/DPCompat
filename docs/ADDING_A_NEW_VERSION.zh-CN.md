@@ -60,6 +60,9 @@ scanner 会利用这些记录：资源目录、命令前缀、精确标识符命
 | --- | --- | --- |
 | 声明式 JSON 规则 | 精确值替换、明确 key 重命名、有限文件 glob | `rules/declarative.py` + `docs/RULE_AUTHORING.zh-CN.md` |
 | 内置 Python 规则 | 命令、SNBT/NBT、跨文件引用、条件语义 | `migrations/` 下各模块 |
+| 可分发插件 | 需要随包分发、由用户安装/开关的规则集 | `docs/PLUGIN_DEVELOPMENT.zh-CN.md` |
+
+需要用户侧安装的规则集（例如给某个社区数据包专用的兼容层）优先写成插件文件：作者用 `dpcompat plugin install` 或 TUI 安装，用户可以随时禁用，且插件列表能看到名称与描述。内置规则仍然按第 3.2 节步骤登记。
 
 ### 3.2 内置 Python 规则步骤
 

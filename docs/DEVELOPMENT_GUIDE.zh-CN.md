@@ -19,9 +19,9 @@ powershell -ExecutionPolicy Bypass -File scripts/build.ps1 check
 powershell -ExecutionPolicy Bypass -File scripts/build.ps1 smoke
 ```
 
-`make check` 依次运行 Ruff format check、Ruff lint、严格 mypy 和 pytest。新增依赖后先更新 `pyproject.toml`，再执行 `uv lock`；CI 使用 `uv sync --locked --all-groups`。
+`make check` 依次运行 Ruff format check、Ruff lint、严格 mypy、pyright 和 pytest。新增依赖后先更新 `pyproject.toml`，再执行 `uv lock`；CI 使用 `uv sync --locked --all-groups`。
 
-新增正式版/feature/规则时，按 [`ADDING_A_NEW_VERSION.zh-CN.md`](ADDING_A_NEW_VERSION.zh-CN.md) 的四层步骤执行。
+新增正式版/feature/规则时，按 [`ADDING_A_NEW_VERSION.zh-CN.md`](ADDING_A_NEW_VERSION.zh-CN.md) 的四层步骤执行；编写可分发规则插件时，按 [`PLUGIN_DEVELOPMENT.zh-CN.md`](PLUGIN_DEVELOPMENT.zh-CN.md) 的格式与安全要求执行。
 
 ## 改动路由
 
@@ -29,10 +29,12 @@ powershell -ExecutionPolicy Bypass -File scripts/build.ps1 smoke
 | --- | --- | --- |
 | 正式版本 | `data/releases.json` | versions test、sources、matrix |
 | 新资源/命令最低版本 | `data/features.json` | scanner test、official audit |
-| 简单 JSON 变更 | 项目 declarative rule | schema/双向/build tests |
-| 命令/SNBT/NBT 语义 | `migrations/` | `sources.py`、registry、双向/冲突 tests |
+| 简单 JSON 变更 | 项目 declarative rule 或 JSON 插件 | schema/双向/build tests |
+| 命令/SNBT/NBT 语义 | `migrations/` 或 Python 插件 | `sources.py`、registry、双向/冲突 tests |
+| 可分发规则集 | 插件文件（`.py`/`.json`） | `docs/PLUGIN_DEVELOPMENT.zh-CN.md`、插件测试 |
 | 新配置 | Pydantic `config.py` | example TOML、CLI、invalid-input test |
 | CLI 呈现 | `cli.py` | Rich 与 JSON stdout tests |
+| TUI 呈现 | `ui/` | Textual smoke tests |
 | 构建/overlay | `engine.py` / `packio.py` | deterministic/security/build tests |
 
 ## 规则开发循环
