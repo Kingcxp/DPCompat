@@ -93,6 +93,38 @@ class PackIoTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Multiple possible"), materialize_source(base):
                 pass
 
+    def test_bundle_prefers_the_only_root_with_a_data_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            archive_path = Path(temp_dir) / "bundle.zip"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr("datapack/pack.mcmeta", '{"pack":{"pack_format":61}}')
+                archive.writestr("datapack/data/demo/function/load.mcfunction", "say loaded\n")
+                archive.writestr("resourcepack/pack.mcmeta", '{"pack":{"pack_format":46}}')
+                archive.writestr("resourcepack/assets/demo/lang/en_us.json", "{}")
+
+            with materialize_source(archive_path) as root:
+                self.assertEqual(root.name, "datapack")
+                self.assertTrue((root / "data/demo/function/load.mcfunction").is_file())
+
+    def test_explicit_pack_root_resolves_multi_datapack_bundle(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            archive_path = Path(temp_dir) / "bundle.zip"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                for name in ("first", "second"):
+                    archive.writestr(f"{name}/pack.mcmeta", '{"pack":{"pack_format":61}}')
+                    archive.writestr(f"{name}/data/demo/function/load.mcfunction", f"say {name}\n")
+
+            with self.assertRaisesRegex(ValueError, "Multiple possible"), materialize_source(archive_path):
+                pass
+            with materialize_source(archive_path, pack_root="second") as root:
+                self.assertEqual(root.name, "second")
+
+            with (
+                self.assertRaisesRegex(ValueError, "safe relative"),
+                materialize_source(archive_path, pack_root="../escape"),
+            ):
+                pass
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -39,6 +39,7 @@ class ProjectConfig(BaseModel):
     universal: bool = True
     output_name: str = Field(default="datapack", min_length=1, pattern=r"^[A-Za-z0-9._-]+$")
     source_format: PackFormat | None = None
+    pack_root: str | None = None
     policy: BuildPolicy = Field(default_factory=BuildPolicy)
     fallbacks: dict[str, Path] = Field(default_factory=dict)
     clean_output: bool = True
@@ -50,6 +51,22 @@ class ProjectConfig(BaseModel):
         if len(value) != len(set(value)):
             raise ValueError("[build].targets contains duplicates")
         return value
+
+    @field_validator("pack_root")
+    @classmethod
+    def validate_pack_root(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.replace("\\", "/")
+        parts = normalized.split("/")
+        if (
+            not value.strip()
+            or value != value.strip()
+            or normalized.startswith("/")
+            or any(part in {"", ".", ".."} for part in parts)
+        ):
+            raise ValueError("[build].pack_root must be a safe relative POSIX path")
+        return normalized
 
     @model_validator(mode="after")
     def validate_fallback_keys(self) -> Self:
@@ -91,7 +108,7 @@ def load_config(path: Path) -> ProjectConfig:
     _reject_unknown(
         "build",
         build,
-        {"targets", "universal", "output_name", "source_format", "clean_output"},
+        {"targets", "universal", "output_name", "source_format", "pack_root", "clean_output"},
     )
     _reject_unknown(
         "policy",
@@ -116,6 +133,7 @@ def load_config(path: Path) -> ProjectConfig:
         "universal": build.get("universal", True),
         "output_name": build.get("output_name", "datapack"),
         "source_format": source_format,
+        "pack_root": build.get("pack_root"),
         "clean_output": build.get("clean_output", True),
         "policy": policy,
         "fallbacks": fallbacks,

@@ -27,6 +27,15 @@ class ConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, r"Unknown \[build\] key"):
                 load_config(config)
 
+    def test_bundle_pack_root_is_validated(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = Path(temp_dir) / "dpcompat.toml"
+            config.write_text('[build]\npack_root="bundle/datapack"\n', encoding="utf-8")
+            self.assertEqual(load_config(config).pack_root, "bundle/datapack")
+            config.write_text('[build]\npack_root="../escape"\n', encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "safe relative"):
+                load_config(config)
+
 
 if __name__ == "__main__":
     unittest.main()

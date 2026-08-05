@@ -132,7 +132,7 @@ def _command_rules(args: argparse.Namespace) -> int:
 
 
 def _command_inspect(args: argparse.Namespace) -> int:
-    with materialize_source(args.source) as root:
+    with materialize_source(args.source, pack_root=args.pack_root) as root:
         result = detect_pack(root)
     if args.json:
         console.print_json(
@@ -184,6 +184,8 @@ def _load_effective_config(args: argparse.Namespace) -> ProjectConfig:
         config.source_format = PackFormat.parse(args.source_format)
     if getattr(args, "output_name", None):
         config.output_name = args.output_name
+    if getattr(args, "pack_root", None):
+        config.pack_root = args.pack_root
     config.fallbacks.update(_parse_fallbacks(getattr(args, "fallback", None)))
     config.policy = BuildPolicy(
         allow_emulated=(False if getattr(args, "deny_emulated", False) else config.policy.allow_emulated),
@@ -222,7 +224,7 @@ def _compile(args: argparse.Namespace, *, emit_archives: bool) -> tuple[int, dic
 
     status_text = f"Compiling {len(profiles)} target release(s) with {len(registry.rules())} rules"
     status_context = nullcontext() if getattr(args, "json", False) else console.status(status_text, spinner="dots")
-    with status_context, materialize_source(args.source) as root:
+    with status_context, materialize_source(args.source, pack_root=config.pack_root) as root:
         detection, results, universal_archive = compile_pack(
             root,
             profiles,
@@ -316,6 +318,7 @@ def _command_server_check(args: argparse.Namespace) -> int:
 def _add_policy_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--config", "-c", type=Path, help="Optional dpcompat.toml")
     parser.add_argument("--source-format", help="Override detected source format after review")
+    parser.add_argument("--pack-root", help="Relative pack directory inside a multi-pack folder or ZIP")
     parser.add_argument("--deny-emulated", action="store_true")
     parser.add_argument("--allow-lossy", action="store_true")
     parser.add_argument("--allow-unknown", action="store_true")
@@ -364,6 +367,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     inspect_parser = subparsers.add_parser("inspect", help="Detect source format and scan features")
     inspect_parser.add_argument("source", type=Path)
+    inspect_parser.add_argument("--pack-root", help="Relative pack directory inside a multi-pack folder or ZIP")
     inspect_parser.add_argument("--json", action="store_true")
     inspect_parser.set_defaults(handler=_command_inspect)
 

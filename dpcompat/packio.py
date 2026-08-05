@@ -14,7 +14,7 @@ import shutil
 import tempfile
 import zipfile
 from collections.abc import Iterator
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .metadata import overlay_matches
@@ -66,19 +66,37 @@ def locate_pack_root(path: Path) -> Path:
         return candidates[0]
     if not candidates:
         raise ValueError(f"No pack.mcmeta found below {path}")
+    data_candidates = [candidate for candidate in candidates if (candidate / "data").is_dir()]
+    if len(data_candidates) == 1:
+        return data_candidates[0]
     rendered = ", ".join(sorted(candidate.relative_to(path).as_posix() or "." for candidate in candidates))
     raise ValueError(
         f"Multiple possible data-pack roots were found; select one with --pack-root. Candidates: {rendered}"
     )
 
 
+def _select_pack_parent(root: Path, pack_root: str | None) -> Path:
+    if pack_root is None:
+        return root
+    relative = PurePosixPath(pack_root.replace("\\", "/"))
+    if relative.is_absolute() or not relative.parts or any(part in {"", ".", ".."} for part in relative.parts):
+        raise ValueError(f"pack_root must be a safe relative POSIX path: {pack_root!r}")
+    selected = (root / relative).resolve()
+    resolved_root = root.resolve()
+    if resolved_root not in selected.parents:
+        raise ValueError(f"pack_root escaped the source: {pack_root!r}")
+    if not selected.is_dir():
+        raise ValueError(f"pack_root does not name a directory in the source: {pack_root!r}")
+    return selected
+
+
 @contextlib.contextmanager
-def materialize_source(source: Path) -> Iterator[Path]:
-    """Yield a validated pack root from a directory or plain ZIP input."""
+def materialize_source(source: Path, *, pack_root: str | None = None) -> Iterator[Path]:
+    """Yield a validated pack root from a directory, plain ZIP, or multi-pack bundle."""
 
     source = source.expanduser().resolve()
     if source.is_dir():
-        root = locate_pack_root(source)
+        root = locate_pack_root(_select_pack_parent(source, pack_root))
         validate_regular_tree(root)
         yield root
         return
@@ -87,7 +105,7 @@ def materialize_source(source: Path) -> Iterator[Path]:
             destination = Path(temp_dir)
             with zipfile.ZipFile(source) as archive:
                 _safe_extract(archive, destination)
-            root = locate_pack_root(destination)
+            root = locate_pack_root(_select_pack_parent(destination, pack_root))
             validate_regular_tree(root)
             yield root
         return
@@ -96,45 +114,6 @@ def materialize_source(source: Path) -> Iterator[Path]:
 
 def _ignore(_directory: str, names: list[str]) -> set[str]:
     return {name for name in names if name in IGNORED_NAMES}
-
-
-def tree_sha256(root: Path, *, include_mcmeta: bool = True) -> str:
-    """Hash paths and bytes in stable lexical order."""
-
-    digest = hashlib.sha256()
-    for path in sorted(item for item in root.rglob("*") if item.is_file()):
-        relative = path.relative_to(root).as_posix()
-        if not include_mcmeta and relative == "pack.mcmeta":
-            continue
-        digest.update(relative.encode("utf-8"))
-        digest.update(b"\0")
-        digest.update(path.read_bytes())
-        digest.update(b"\0")
-    return digest.hexdigest()
-
-
-def create_deterministic_zip(source: Path, output: Path) -> None:
-    """Create an atomically replaced ZIP with stable timestamps and permissions."""
-
-    output.parent.mkdir(parents=True, exist_ok=True)
-    # Write beside the destination so ``replace`` stays atomic on one filesystem.
-    fd, temporary_name = tempfile.mkstemp(prefix=output.name + ".", suffix=".tmp", dir=output.parent)
-    os.close(fd)
-    temporary = Path(temporary_name)
-    try:
-        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
-            for path in sorted(item for item in source.rglob("*") if item.is_file()):
-                relative = path.relative_to(source).as_posix()
-                info = zipfile.ZipInfo(relative, date_time=(2024, 1, 1, 0, 0, 0))
-                info.compress_type = zipfile.ZIP_DEFLATED
-                info.external_attr = 0o644 << 16
-                archive.writestr(info, path.read_bytes())
-        temporary.replace(output)
-        # mkstemp creates mode 0600. Published archives are ordinary build artifacts,
-        # so restore a conventional read permission mask after the atomic replace.
-        output.chmod(0o644)
-    finally:
-        temporary.unlink(missing_ok=True)
 
 
 def copy_pack(source: Path, destination: Path) -> None:
@@ -211,3 +190,42 @@ def flatten_pack(
             merge_tree(overlay_root, destination)
             applied.append(directory)
     return applied
+
+
+def tree_sha256(root: Path, *, include_mcmeta: bool = True) -> str:
+    """Hash paths and bytes in stable lexical order."""
+
+    digest = hashlib.sha256()
+    for path in sorted(item for item in root.rglob("*") if item.is_file()):
+        relative = path.relative_to(root).as_posix()
+        if not include_mcmeta and relative == "pack.mcmeta":
+            continue
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def create_deterministic_zip(source: Path, output: Path) -> None:
+    """Create an atomically replaced ZIP with stable timestamps and permissions."""
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    # Write beside the destination so ``replace`` stays atomic on one filesystem.
+    fd, temporary_name = tempfile.mkstemp(prefix=output.name + ".", suffix=".tmp", dir=output.parent)
+    os.close(fd)
+    temporary = Path(temporary_name)
+    try:
+        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+            for path in sorted(item for item in source.rglob("*") if item.is_file()):
+                relative = path.relative_to(source).as_posix()
+                info = zipfile.ZipInfo(relative, date_time=(2024, 1, 1, 0, 0, 0))
+                info.compress_type = zipfile.ZIP_DEFLATED
+                info.external_attr = 0o644 << 16
+                archive.writestr(info, path.read_bytes())
+        temporary.replace(output)
+        # mkstemp creates mode 0600. Published archives are ordinary build artifacts,
+        # so restore a conventional read permission mask after the atomic replace.
+        output.chmod(0o644)
+    finally:
+        temporary.unlink(missing_ok=True)
