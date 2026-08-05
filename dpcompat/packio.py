@@ -8,6 +8,8 @@ replacement so the same input produces the same bytes or no archive at all.
 from __future__ import annotations
 
 import contextlib
+import hashlib
+import os
 import shutil
 import tempfile
 import zipfile
@@ -94,6 +96,45 @@ def materialize_source(source: Path) -> Iterator[Path]:
 
 def _ignore(_directory: str, names: list[str]) -> set[str]:
     return {name for name in names if name in IGNORED_NAMES}
+
+
+def tree_sha256(root: Path, *, include_mcmeta: bool = True) -> str:
+    """Hash paths and bytes in stable lexical order."""
+
+    digest = hashlib.sha256()
+    for path in sorted(item for item in root.rglob("*") if item.is_file()):
+        relative = path.relative_to(root).as_posix()
+        if not include_mcmeta and relative == "pack.mcmeta":
+            continue
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def create_deterministic_zip(source: Path, output: Path) -> None:
+    """Create an atomically replaced ZIP with stable timestamps and permissions."""
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    # Write beside the destination so ``replace`` stays atomic on one filesystem.
+    fd, temporary_name = tempfile.mkstemp(prefix=output.name + ".", suffix=".tmp", dir=output.parent)
+    os.close(fd)
+    temporary = Path(temporary_name)
+    try:
+        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+            for path in sorted(item for item in source.rglob("*") if item.is_file()):
+                relative = path.relative_to(source).as_posix()
+                info = zipfile.ZipInfo(relative, date_time=(2024, 1, 1, 0, 0, 0))
+                info.compress_type = zipfile.ZIP_DEFLATED
+                info.external_attr = 0o644 << 16
+                archive.writestr(info, path.read_bytes())
+        temporary.replace(output)
+        # mkstemp creates mode 0600. Published archives are ordinary build artifacts,
+        # so restore a conventional read permission mask after the atomic replace.
+        output.chmod(0o644)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def copy_pack(source: Path, destination: Path) -> None:
