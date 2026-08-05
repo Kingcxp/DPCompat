@@ -82,7 +82,7 @@ uv run dpcompat plugin install my_rules.py
 uv run dpcompat plugin disable clocks@101.1
 ```
 
-插件目录默认 `~/.dpcompat/plugins`（可用 `DPCOMPAT_PLUGIN_DIR` 覆盖），启用状态持久化在 `plugins.toml`。TUI 的插件管理页提供同样的浏览、安装与开关操作。插件文件格式、元数据契约与安全要求见 [`docs/PLUGIN_DEVELOPMENT.zh-CN.md`](docs/PLUGIN_DEVELOPMENT.zh-CN.md)。
+插件目录默认位于 dpcompat 包所在位置（`site-packages/dpcompat/plugins`，可用 `DPCOMPAT_PLUGIN_DIR` 覆盖），启用状态持久化在 `plugins.toml`，插件只影响当前 Python 环境。TUI 的插件管理页提供浏览、安装、创建模板与开关操作。插件文件格式、元数据契约与安全要求见 [`docs/PLUGIN_DEVELOPMENT.zh-CN.md`](docs/PLUGIN_DEVELOPMENT.zh-CN.md)。
 
 ## 配置
 

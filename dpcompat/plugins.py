@@ -35,6 +35,54 @@ PLUGIN_DIR_ENV = "DPCOMPAT_PLUGIN_DIR"
 STATE_FILE_NAME = "plugins.toml"
 
 _RULE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._@-]*$")
+_TEMPLATE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+
+_TEMPLATE_SOURCE = '''"""{name}: DPCompat 插件模板.
+
+安装: dpcompat plugin install {name}.py
+在 TUI 插件管理页也可以直接安装本文件。
+完整插件开发说明见 docs/PLUGIN_DEVELOPMENT.zh-CN.md。
+"""
+
+from dpcompat.migrations.base import MigrationContext, RuleResult, crosses
+from dpcompat.models import Compatibility, MigrationRecord, PackFormat
+
+PLUGIN = {{
+    "id": "{name}@88",
+    "name": "{name}",
+    "description": "在这里描述这个插件负责什么迁移。",
+    "version": "0.1.0",
+    "official_sources": [
+        "https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-9"
+    ],
+}}
+
+
+class ExampleRule:
+    id = "{name}.example@88"
+    boundary = PackFormat(88)
+    priority = 450
+
+    def applies(self, source: PackFormat, target: PackFormat) -> bool:
+        return crosses(source, target, self.boundary)
+
+    def apply(self, context: MigrationContext) -> RuleResult:
+        # 在这里实现迁移：先确认资源/命令上下文，再分别处理 upgrade 与降级。
+        # 不可证明等价时返回 LOSSY / UNSUPPORTED / UNKNOWN，而不是猜测。
+        return RuleResult(MigrationRecord(self.id, Compatibility.LOSSLESS, 0))
+
+
+RULES = (ExampleRule(),)
+'''
+
+_TEMPLATE_README = """# {name} 插件模板
+
+- `{name}.py` 是插件本体：`PLUGIN` 元数据 + `RULES` 规则元组。
+- 安装：`dpcompat plugin install {name}.py`（或 TUI 插件管理页 -> 安装插件文件）。
+- 安装后可用 `dpcompat plugin list` 查看，`dpcompat plugin disable/enable {name}@88` 开关。
+- 开发前请阅读 `docs/PLUGIN_DEVELOPMENT.zh-CN.md` 与 `docs/RULE_AUTHORING.zh-CN.md`。
+- 规则 id 全局唯一；规则必须有一手来源；不可证明等价时失败关闭。
+"""
 
 
 class PluginMeta(FrozenModel):
@@ -225,12 +273,43 @@ BUILTIN_PLUGINS = _builtin_plugins()
 
 
 def default_plugin_dir() -> Path:
-    """Resolve the plugin store directory from the environment or the home folder."""
+    """Resolve the plugin store directory for this dpcompat installation.
+
+    Plugins live next to the installed package (``site-packages/dpcompat/plugins``)
+    so a plugin installed in one Python environment never affects another
+    dpcompat installation.  ``DPCOMPAT_PLUGIN_DIR`` overrides the location for
+    CI, containers, and environments whose package directory is read-only.
+    """
 
     override = os.environ.get(PLUGIN_DIR_ENV)
     if override:
         return Path(override).expanduser()
-    return Path.home() / ".dpcompat" / "plugins"
+    return Path(__file__).resolve().parent / "plugins"
+
+
+def scaffold_plugin_template(name: str, location: Path, *, subfolder: bool = False) -> Path:
+    """Create a starter plugin project and return the generated plugin file.
+
+    ``name`` becomes the plugin id and the file name; it must match the plugin id
+    pattern.  With ``subfolder`` the project is created in ``location/name``.
+    """
+
+    name = name.strip()
+    if not _TEMPLATE_NAME_RE.fullmatch(name):
+        raise ValueError("插件名称只能包含小写字母、数字、'.'、'_'、'-'，且不能为空")
+    location = location.expanduser().resolve()
+    if not location.is_dir():
+        raise ValueError(f"模板位置不存在或不是文件夹：{location}")
+    target_dir = location / name if subfolder else location
+    target_dir.mkdir(parents=True, exist_ok=True)
+    plugin_file = target_dir / f"{name}.py"
+    if plugin_file.exists():
+        raise ValueError(f"插件文件已存在：{plugin_file}")
+    plugin_file.write_text(_TEMPLATE_SOURCE.format(name=name), encoding="utf-8")
+    readme = target_dir / "README.md"
+    if not readme.exists():
+        readme.write_text(_TEMPLATE_README.format(name=name), encoding="utf-8")
+    return plugin_file
 
 
 def _load_python_module(path: Path) -> Any:

@@ -12,6 +12,8 @@ logs/
 .coverage
 .test_datapack/
 test_datapack/
+# Installed plugins live next to the package; never track or ship them.
+dpcompat/plugins/
 
 __MACOSX/
 .DS_Store

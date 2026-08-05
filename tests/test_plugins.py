@@ -6,10 +6,17 @@ import json
 from pathlib import Path
 
 import pytest
+from dpcompat import plugins as plugins_module
 from dpcompat.config import ProjectConfig
 from dpcompat.migrations import BUILTIN_RULES
 from dpcompat.models import BuildPolicy, PackFormat
-from dpcompat.plugins import BUILTIN_PLUGINS, PluginStore, create_effective_registry
+from dpcompat.plugins import (
+    BUILTIN_PLUGINS,
+    PluginStore,
+    create_effective_registry,
+    default_plugin_dir,
+    scaffold_plugin_template,
+)
 from dpcompat.rules import create_rule_registry
 
 _PYTHON_PLUGIN = '''
@@ -84,6 +91,40 @@ def plugin_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     directory = tmp_path / "plugins"
     monkeypatch.setenv("DPCOMPAT_PLUGIN_DIR", str(directory))
     return directory
+
+
+def test_default_plugin_dir_is_scoped_to_the_installation() -> None:
+    # Installed plugins live next to the dpcompat package so separate Python
+    # environments never share plugin state.
+    expected = Path(plugins_module.__file__).resolve().parent / "plugins"
+    assert default_plugin_dir() == expected
+
+
+def test_scaffold_plugin_template_creates_a_working_project(tmp_path: Path) -> None:
+    created = scaffold_plugin_template("demo.template", tmp_path, subfolder=True)
+    assert created == tmp_path / "demo.template" / "demo.template.py"
+    assert created.is_file()
+    assert (tmp_path / "demo.template" / "README.md").is_file()
+    source = created.read_text(encoding="utf-8")
+    assert '"id": "demo.template@88"' in source
+    assert "RULES = (ExampleRule(),)" in source
+
+    # The scaffolded file must be installable as a real plugin.
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setenv("DPCOMPAT_PLUGIN_DIR", str(tmp_path / "plugins"))
+    store = PluginStore()
+    info = store.install(created)
+    assert info.id == "demo.template@88"
+    assert info.rules == ("demo.template.example@88",)
+
+
+def test_scaffold_plugin_template_validates_the_name(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="插件名称"):
+        scaffold_plugin_template("Bad Name", tmp_path)
+    with pytest.raises(ValueError, match="插件名称"):
+        scaffold_plugin_template("bad-name!", tmp_path)
+    with pytest.raises(ValueError, match="插件名称"):
+        scaffold_plugin_template("", tmp_path)
 
 
 def test_builtin_plugins_cover_every_builtin_rule_exactly_once() -> None:

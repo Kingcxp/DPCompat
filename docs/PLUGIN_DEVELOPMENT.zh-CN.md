@@ -6,7 +6,7 @@
 
 - **内置插件**：项目自带的 13 个规则分组（如 `gamerules@94.1`、`clocks@101.1`）。它们与用户插件一样可以被启用/禁用，禁用状态持久化。
 - **文件插件**：你编写的 `.py`（Python 规则）或 `.json`（声明式规则）文件，通过 CLI 或 TUI 安装。
-- **插件目录**：默认 `~/.dpcompat/plugins`，可用环境变量 `DPCOMPAT_PLUGIN_DIR` 覆盖（CI 与测试推荐使用）。启用状态保存在该目录的 `plugins.toml`，只有被禁用的插件会出现在其中（缺失即默认启用）。
+- **插件目录**：默认位于 **dpcompat 包旁边**（`site-packages/dpcompat/plugins`，editable/源码安装时为 `dpcompat/plugins/`），因此插件只属于当前 Python 环境中的这个 dpcompat——换一个 venv 或 pip 环境互不影响，Windows 与 Linux 行为一致。可用环境变量 `DPCOMPAT_PLUGIN_DIR` 覆盖（CI、容器或包目录只读的环境推荐使用）。启用状态保存在该目录的 `plugins.toml`，只有被禁用的插件会出现在其中（缺失即默认启用）。注意：`pip uninstall dpcompat` 不会删除插件目录，数据保留。
 - **规则 id 全局唯一**：插件提供的规则 id 不能与内置规则或其他已安装插件冲突；安装时即校验，冲突直接拒绝。
 
 ## 2. Python 插件
@@ -131,11 +131,14 @@ dpcompat plugin remove my-pack-rules@94.1
 dpcompat tui
 ```
 
-- 主界面按 `p`（或点击“插件管理”）进入插件页；
+- 主界面按 `p`（或点击右上角“插件管理”）进入插件页；
 - 每个插件一张卡片：名称、id、描述、内置/文件徽标、规则列表、启用勾选框；
 - 点击“安装插件文件...”用文件树选择 `.py`/`.json` 文件，安装后立即出现在列表；
+- 点击“创建插件模板...”选择位置（可勾选创建同名子文件夹）生成可直接编辑的模板项目，适合快速开始开发；
 - 文件插件卡片上有“卸载”按钮；
 - 所有开关即时持久化。
+
+模板项目包含 `插件名.py`（`PLUGIN` 元数据 + 示例规则骨架）与 `README.md`，生成后即可用 `dpcompat plugin install` 或 TUI 安装。
 
 ## 6. 开发与测试建议
 
