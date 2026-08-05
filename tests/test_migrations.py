@@ -24,7 +24,7 @@ from dpcompat.migrations.base import MigrationContext
 from dpcompat.migrations.commands import HorseSaddleSlotRule, SpawnRotationRule
 from dpcompat.migrations.entities import EntitySnbtRule
 from dpcompat.migrations.identifiers import ChainRenameRule
-from dpcompat.migrations.resources import FilteredLootRule
+from dpcompat.migrations.resources import FilteredLootRule, TestEnvironmentClockRule, TimelineClockRule
 from dpcompat.migrations.items import ItemTooltipComponentsRule
 from dpcompat.migrations.structures import StructureEntityNbtRule
 from dpcompat.migrations.text import TextComponentRule
@@ -494,6 +494,35 @@ class FilteredLootRuleTests(unittest.TestCase):
             rule = FilteredLootRule()
             rule.apply(MigrationContext(root, PackFormat(88), PackFormat(94, 1), BuildPolicy()))
             self.assertEqual((root / "data/demo/loot_table/test.json").read_text(encoding="utf-8"), before)
+
+
+class WorldClockRuleTests(unittest.TestCase):
+    def test_timeline_default_clock_is_inserted_on_upgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(root, "data/demo/timeline/test.json", '{"tracks":{}}\n')
+            rule = TimelineClockRule()
+            rule.apply(MigrationContext(root, PackFormat(94, 1), PackFormat(101, 1), BuildPolicy()))
+            value = (root / "data/demo/timeline/test.json").read_text(encoding="utf-8")
+            self.assertIn('"clock": "minecraft:overworld"', value)
+
+    def test_custom_timeline_clock_cannot_downgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [101, 1])
+            write(root, "data/demo/timeline/test.json", '{"clock":"demo:clock","tracks":{}}\n')
+            rule = TimelineClockRule()
+            result = rule.apply(MigrationContext(root, PackFormat(101, 1), PackFormat(94, 1), BuildPolicy()))
+            self.assertEqual({item.code for item in result.diagnostics}, {"timeline-custom-clock-cannot-downgrade"})
+
+    def test_test_environment_time_of_day_to_clock_time(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(root, "data/demo/test_environment/test.json", '{"time_of_day":6000}\n')
+            rule = TestEnvironmentClockRule()
+            rule.apply(MigrationContext(root, PackFormat(94, 1), PackFormat(101, 1), BuildPolicy()))
+            value = (root / "data/demo/test_environment/test.json").read_text(encoding="utf-8")
+            self.assertIn("clock_time", value)
+            self.assertNotIn("time_of_day", value)
 
 
 if __name__ == "__main__":
