@@ -1,0 +1,31 @@
+name: Migration rule request
+about: Propose a versioned data-pack migration
+body:
+  - type: input
+    id: source
+    attributes:
+      label: Source Minecraft version / pack format
+    validations:
+      required: true
+  - type: input
+    id: target
+    attributes:
+      label: Target Minecraft version / pack format
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: Minimal data-pack example
+    validations:
+      required: true
+  - type: textarea
+    id: official
+    attributes:
+      label: Mojang official technical source
+    validations:
+      required: true
+  - type: textarea
+    id: semantics
+    attributes:
+      label: Expected behavior and known loss

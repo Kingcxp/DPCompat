@@ -1,0 +1,23 @@
+name: Bug report
+about: Report an incorrect build or diagnostic
+body:
+  - type: input
+    id: version
+    attributes:
+      label: DPCompat version or commit
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps and minimal pack
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: compatibility-report.json excerpt
+  - type: textarea
+    id: server
+    attributes:
+      label: Vanilla server log / GameTest evidence

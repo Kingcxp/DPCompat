@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+      - run: uv sync --locked --all-groups
+      - run: make check
+      - run: make smoke
+      - run: uv run dpcompat plan examples/simple_pack --target 1.21.4 --target 26.2
+      - run: uv run dpcompat build examples/simple_pack --target 1.21.4 --target 1.21.9 --target 26.2 --output dist
+      - run: python -m zipfile -t dist/datapack-universal-1.21.4-plus.zip
+      - run: uv build
+
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --locked --all-groups
+      - name: Quality gates via the PowerShell dev script
+        shell: pwsh
+        run: .\scripts\build.ps1 check
+      - name: CLI smoke via the PowerShell dev script
+        shell: pwsh
+        run: .\scripts\build.ps1 smoke
