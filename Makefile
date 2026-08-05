@@ -20,6 +20,7 @@ lint:
 
 typecheck:
 	$(UV) run mypy
+	$(UV) run pyright
 
 test:
 	$(UV) run pytest -q

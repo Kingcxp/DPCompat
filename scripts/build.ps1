@@ -57,6 +57,7 @@ switch ($Target) {
     }
     "typecheck" {
         Invoke-Uv @("run", "mypy")
+        Invoke-Uv @("run", "pyright")
     }
     "test" {
         Invoke-Uv @("run", "pytest", "-q")
