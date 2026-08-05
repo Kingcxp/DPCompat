@@ -8,7 +8,9 @@ build pipeline; end-to-end behavior is covered by ``test_build.py`` and
 
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
 from dpcompat.commands import (
     is_zero_rotation,
@@ -17,11 +19,16 @@ from dpcompat.commands import (
     parse_command_line,
 )
 from dpcompat.entity_data import downgrade_entity_nbt, upgrade_entity_nbt
+from dpcompat.migrations.base import MigrationContext
+from dpcompat.migrations.text import TextComponentRule
+from dpcompat.models import BuildPolicy, PackFormat, Severity
 from dpcompat.text_components import (
     TextComponentMigrationError,
     downgrade_component,
     upgrade_component,
 )
+
+from helpers import make_pack, write
 
 
 class CommandParserTests(unittest.TestCase):
@@ -144,6 +151,53 @@ class EntityDataTests(unittest.TestCase):
         result = upgrade_entity_nbt("minecraft:custom_thing", {"TileX": 1})
         self.assertEqual(result.value, {"TileX": 1})
         self.assertEqual(result.changed, 0)
+
+
+class TextComponentRuleTests(unittest.TestCase):
+    """Exercise the rule through a real MigrationContext without the engine."""
+
+    def _run(self, root: Path, source: int, target: int) -> list:
+        rule = TextComponentRule()
+        result = rule.apply(MigrationContext(root, PackFormat(source), PackFormat(target), BuildPolicy()))
+        return result.diagnostics
+
+    def test_tellraw_json_upgrade_in_place(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(
+                root,
+                "data/demo/function/test.mcfunction",
+                'tellraw @s {"text":"x","clickEvent":{"action":"run_command","value":"/say hi"}}\n',
+            )
+            diagnostics = self._run(root, 61, 71)
+            self.assertEqual([item.severity for item in diagnostics], [])
+            text = (root / "data/demo/function/test.mcfunction").read_text(encoding="utf-8")
+            self.assertIn("click_event", text)
+            self.assertIn("command", text)
+
+    def test_known_json_resource_upgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(
+                root,
+                "data/demo/item_modifier/test.json",
+                '{"function":"minecraft:set_name","name":'
+                '{"text":"x","hoverEvent":{"action":"show_text","value":"tooltip"}}}\n',
+            )
+            self._run(root, 61, 71)
+            value = (root / "data/demo/item_modifier/test.json").read_text(encoding="utf-8")
+            self.assertIn("hover_event", value)
+
+    def test_unquoted_macro_component_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(root, "data/demo/function/test.mcfunction", "$tellraw @s $(component)\n")
+            diagnostics = self._run(root, 61, 71)
+            self.assertEqual(
+                {item.code for item in diagnostics},
+                {"macro-component-needs-runtime-parse"},
+            )
+            self.assertTrue(all(item.severity == Severity.ERROR for item in diagnostics))
 
 
 if __name__ == "__main__":
