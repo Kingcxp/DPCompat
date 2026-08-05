@@ -31,6 +31,7 @@ PLUGIN = {
     "description": "把 demo:old 重命名为 demo:new 的示例规则。",
     "version": "1.0.0",
     "target_version": "1.21.9",
+    "readme": "## 文档\\n\\n这是演示插件的说明。",
     "official_sources": ["https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-9"],
 }
 
@@ -110,6 +111,7 @@ def test_scaffold_plugin_template_creates_a_working_project(tmp_path: Path) -> N
     source = created.read_text(encoding="utf-8")
     assert '"id": "demo.template@88"' in source
     assert '"target_version": "1.21.9"' in source
+    assert '"readme"' in source
     assert "RULES = (ExampleRule(),)" in source
 
     # The scaffolded file must be installable as a real plugin.
@@ -138,6 +140,8 @@ def test_builtin_plugins_cover_every_builtin_rule_exactly_once() -> None:
     for info in builtin:
         assert info.name
         assert info.description
+        assert info.readme  # every built-in ships a generated Markdown detail page
+        assert info.target_version
         covered.extend(info.rules)
     assert sorted(covered) == sorted(rule.id for rule in BUILTIN_RULES)
 
@@ -149,6 +153,7 @@ def test_install_enable_disable_uninstall_round_trip(plugin_dir: Path, tmp_path:
     info = store.install(source)
     assert info.origin == "file"
     assert info.rules == ("demo.rename@88",)
+    assert info.readme == "## 文档\n\n这是演示插件的说明。"
     assert (plugin_dir / "demo.python@88.py").is_file()
 
     listed = {item.id: item for item in store.list_plugins()}

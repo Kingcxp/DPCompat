@@ -54,6 +54,24 @@ PLUGIN = {{
     "version": "0.1.0",
     # 声明本插件负责迁移到哪个正式版本；版本必须已在 releases.json 中注册。
     "target_version": "1.21.9",
+    # 插件详情页展示的完整 Markdown 文档（TUI 中点击插件即可阅读）。
+    "readme": """# {name}
+
+**插件 id**：`{name}@88`
+**目标版本**：`1.21.9`
+
+## 这个插件做什么
+
+在这里用 Markdown 详细说明插件负责的迁移：适用场景、边界与安全限制。建议包含：
+
+- 每条规则的行为与一手来源；
+- 明确**不**处理的情况（宏、未知字段、运行时生成的 key）；
+- 降级方向的语义说明。
+
+## 包含的规则
+
+- `{name}.example@88`
+""",
     "official_sources": [
         "https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-9"
     ],
@@ -81,6 +99,7 @@ _TEMPLATE_README = """# {name} 插件模板
 
 - `{name}.py` 是插件本体：`PLUGIN` 元数据 + `RULES` 规则元组。
 - `PLUGIN["target_version"]` 声明该插件负责迁移到的正式版本（必须已在 releases.json 中注册），插件管理页按它分组。
+- `PLUGIN["readme"]` 是插件详情页展示的完整 Markdown 文档（TUI 中点击插件即可阅读）。
 - 安装：`dpcompat plugin install {name}.py`（或 TUI 插件管理页 -> 安装插件文件）。
 - 安装后可用 `dpcompat plugin list` 查看，`dpcompat plugin disable/enable {name}@88` 开关。
 - 开发前请阅读 `docs/PLUGIN_DEVELOPMENT.zh-CN.md` 与 `docs/RULE_AUTHORING.zh-CN.md`。
@@ -99,6 +118,9 @@ class PluginMeta(FrozenModel):
     # registered stable release whose pack format matches one of the plugin's
     # rule boundaries, so the plugin list can group rules by version.
     target_version: str = Field(pattern=r"^[0-9]+(?:\.[0-9]+){1,2}$")
+    # Full Markdown documentation shown on the plugin detail page.  Empty means
+    # the plugin ships no extra documentation beyond its short description.
+    readme: str = ""
     official_sources: tuple[HttpUrl, ...] = ()
 
     @field_validator("name", "description")
@@ -130,6 +152,7 @@ class PluginInfo(FrozenModel):
     rules: tuple[str, ...] = ()
     path: str | None = None
     target_version: str = Field(pattern=r"^[0-9]+(?:\.[0-9]+){1,2}$")
+    readme: str = ""
 
     @classmethod
     def from_meta(
@@ -152,6 +175,7 @@ class PluginInfo(FrozenModel):
             rules=rules,
             path=path,
             target_version=meta.target_version,
+            readme=meta.readme,
         )
 
 
@@ -259,6 +283,39 @@ _BUILTIN_PLUGIN_DEFS: tuple[tuple[str, str, str, tuple[str, ...], str], ...] = (
 )
 
 
+def _builtin_readme(
+    plugin_id: str,
+    name: str,
+    description: str,
+    target_version: str,
+    rule_ids: tuple[str, ...],
+) -> str:
+    """Build the Markdown detail page for a built-in plugin.
+
+    Built-ins ship no hand-written readme, so the detail page is generated from
+    the catalog metadata: identity, purpose, and the rules it owns.
+    """
+
+    lines = [
+        f"# {name}",
+        "",
+        f"**插件 id**：`{plugin_id}`  ",
+        f"**目标版本**：`{target_version}`  ",
+        f"**规则数**：{len(rule_ids)}",
+        "",
+        "## 说明",
+        "",
+        description,
+        "",
+        "## 包含的规则",
+        "",
+        *(f"- `{rule_id}`" for rule_id in rule_ids),
+        "",
+        '> 本文档由 DPCompat 根据内置插件元数据自动生成；自定义插件可以在 `PLUGIN["readme"]` 中提供自己的完整说明。',
+    ]
+    return "\n".join(lines)
+
+
 def _builtin_plugins() -> tuple[PluginInfo, ...]:
     """Build the built-in plugin catalog and verify it covers every built-in rule."""
 
@@ -281,6 +338,7 @@ def _builtin_plugins() -> tuple[PluginInfo, ...]:
                 enabled=True,
                 rules=rule_ids,
                 target_version=target_version,
+                readme=_builtin_readme(plugin_id, name, description, target_version, rule_ids),
             )
         )
     covered = {rule_id for info in infos for rule_id in info.rules}

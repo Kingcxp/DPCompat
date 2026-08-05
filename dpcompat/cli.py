@@ -295,7 +295,7 @@ def _command_plugin_list(args: argparse.Namespace) -> int:
     store = PluginStore()
     infos = store.list_plugins()
     if args.json:
-        console.print_json(_json([item.model_dump(mode="json") for item in infos]))
+        console.print_json(_json([item.model_dump(mode="json", exclude={"readme"}) for item in infos]))
         return 0
     table = Table(title="Migration rule plugins", header_style="bold magenta")
     table.add_column("Enabled", justify="center")
