@@ -74,7 +74,7 @@ uv run dpcompat build Bundle.zip --pack-root path/to/datapack --output dist
 
 ## 插件
 
-迁移规则以插件形式组织。内置规则分为 13 个具名插件（如 `gamerules@94.1`、`clocks@101.1`），用户插件是 `.py` 或 `.json` 文件，安装后与内置插件一样可以浏览、启用、禁用：
+迁移规则以插件形式组织。每个插件声明它负责迁移到哪一个正式版本（`target_version`），内置规则分为 13 个具名插件（如 `gamerules@94.1` 负责 1.21.11、`clocks@101.1` 负责 26.1）；用户插件是 `.py` 或 `.json` 文件，安装后与内置插件一样可以浏览、启用、禁用：
 
 ```bash
 uv run dpcompat plugin list
@@ -82,7 +82,7 @@ uv run dpcompat plugin install my_rules.py
 uv run dpcompat plugin disable clocks@101.1
 ```
 
-插件目录默认位于 dpcompat 包所在位置（`site-packages/dpcompat/plugins`，可用 `DPCOMPAT_PLUGIN_DIR` 覆盖），启用状态持久化在 `plugins.toml`，插件只影响当前 Python 环境。TUI 的插件管理页提供浏览、安装、创建模板与开关操作。插件文件格式、元数据契约与安全要求见 [`docs/PLUGIN_DEVELOPMENT.zh-CN.md`](docs/PLUGIN_DEVELOPMENT.zh-CN.md)。
+插件目录默认位于 dpcompat 包所在位置（`site-packages/dpcompat/plugins`，可用 `DPCOMPAT_PLUGIN_DIR` 覆盖），启用状态持久化在 `plugins.toml`，插件只影响当前 Python 环境。TUI 的插件管理页按目标版本分组展示插件（每版本一个可折叠列表），并提供浏览、安装、创建模板与开关操作；新增正式版后，主界面目标版本勾选列表与插件页分组都会自动出现新版本。插件文件格式、元数据契约与安全要求见 [`docs/PLUGIN_DEVELOPMENT.zh-CN.md`](docs/PLUGIN_DEVELOPMENT.zh-CN.md)。
 
 ## 配置
 

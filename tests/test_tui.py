@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 from dpcompat.plugins import PluginStore, scaffold_plugin_template
 from dpcompat.ui import DpCompatApp
-from dpcompat.ui.app import PluginsScreen, TemplateScreen
+from dpcompat.ui.app import PluginsScreen, TemplateScreen, VersionSection
 from dpcompat.versions import PROFILES
-from textual.containers import VerticalScroll
+from textual.containers import Vertical
 from textual.widgets import Button, Checkbox, Input
 
 
@@ -103,12 +103,39 @@ def test_tui_output_subfolder_field_toggles_and_validates(
             # Invalid names are rejected before the build starts.
             app.screen.query_one("#pack-path-input", Input).value = str(tmp_path)
             name_input.value = "bad/name"
-            app.screen.query_one("#migration-root", VerticalScroll).scroll_end(animate=False)
+            app.screen.query_one("#build-start", Button).scroll_visible(animate=False)
             await pilot.pause()
             await pilot.click("#build-start")
             await pilot.pause()
             # The invalid subfolder name must abort before a build worker starts.
             assert not [worker for worker in app.workers if worker.group == "build"]
+
+    _run(scenario())
+
+
+def test_tui_plugins_screen_groups_plugins_by_target_version(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DPCOMPAT_PLUGIN_DIR", str(tmp_path / "plugins"))
+
+    async def scenario() -> None:
+        app = DpCompatApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("p")  # open the plugins screen
+            await pilot.pause()
+            sections = list(app.screen.query(VersionSection))
+            versions_with_plugins = sorted({info.target_version for info in PluginStore().list_plugins()})
+            # Every version that owns plugins gets exactly one collapsible section.
+            assert len(sections) == len(versions_with_plugins)
+            # Sections start collapsed: the first plugin card body is hidden.
+            body = app.screen.query_one("#version-body-1-21-5", Vertical)
+            assert body.styles.display == "none"
+            # Expanding the version header reveals its plugin cards.
+            await pilot.click("#fold-1-21-5")
+            await pilot.pause()
+            assert body.styles.display != "none"
 
     _run(scenario())
 

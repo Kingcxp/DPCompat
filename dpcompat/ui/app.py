@@ -38,7 +38,7 @@ from textual.widgets import (
 
 from ..config import ProjectConfig, load_config
 from ..engine import compile_pack
-from ..models import BuildPolicy, Diagnostic, VersionProfile
+from ..models import BuildPolicy, Diagnostic, PackFormat, VersionProfile
 from ..packio import materialize_source
 from ..plugins import (
     PluginInfo,
@@ -190,6 +190,64 @@ class PluginCard(Vertical):
         self.post_message(self.Removed(self._info.id))
 
 
+class VersionSection(Vertical):
+    """A collapsible group of plugin cards for one target Minecraft version.
+
+    The plugins screen is organized as a version list: each section header shows
+    the version, its pack format, and how many of its plugins are enabled; the
+    cards live in a body that expands and collapses behind the fold button.
+    """
+
+    def __init__(
+        self,
+        version: str,
+        pack_format: PackFormat | None,
+        plugins: list[PluginInfo],
+        store: PluginStore,
+    ) -> None:
+        super().__init__()
+        self._version = version
+        self._pack_format = pack_format
+        self._plugins = plugins
+        self._store = store
+        self._expanded = False
+
+    def compose(self) -> ComposeResult:
+        """Render the version header and the collapsible plugin body."""
+
+        safe = _widget_safe(self._version)
+        enabled = sum(1 for info in self._plugins if info.enabled)
+        with Vertical(classes="version-section"):
+            with Horizontal(classes="version-head"):
+                yield Button("▸" if not self._expanded else "▾", id=f"fold-{safe}", classes="version-fold")
+                yield Static(f"{self._version}", classes="version-title")
+                if self._pack_format is not None:
+                    yield Static(f"格式 {self._pack_format}", classes="version-format")
+                else:
+                    yield Static("未注册版本", classes="version-format version-unregistered")
+                yield Static(
+                    f"{len(self._plugins)} 个插件 · {enabled}/{len(self._plugins)} 已启用",
+                    classes="version-meta",
+                )
+            with Vertical(id=f"version-body-{safe}", classes="version-body"):
+                for info in self._plugins:
+                    yield PluginCard(info, self._store)
+
+    def on_mount(self) -> None:
+        """Start collapsed so the screen reads as a compact version list."""
+
+        self.query_one(f"#version-body-{_widget_safe(self._version)}", Vertical).styles.display = "none"
+
+    @on(Button.Pressed, ".version-fold")
+    def _toggle(self, event: Button.Pressed) -> None:
+        """Expand or collapse this version's plugin cards."""
+
+        self._expanded = not self._expanded
+        body = self.query_one(f"#version-body-{_widget_safe(self._version)}", Vertical)
+        body.styles.display = "block" if self._expanded else "none"
+        event.button.label = "▾" if self._expanded else "▸"
+
+
 class TemplateScreen(Screen[Path | None]):
     """Ask for a plugin template name and whether to create a subfolder."""
 
@@ -255,13 +313,13 @@ class PluginsScreen(Screen[None]):
         self._store: PluginStore | None = None
 
     def compose(self) -> ComposeResult:
-        """Render the plugin list with install, scaffold, and navigation buttons."""
+        """Render the version-grouped plugin list with install and scaffold buttons."""
 
         yield Header(show_clock=False)
         with Vertical(id="plugins-root"):
             yield Static("插件管理", classes="screen-title")
             yield Static(
-                "内置与已安装插件均可启用或禁用；禁用后其迁移规则不再参与构建。",
+                "插件按目标版本分组，每个插件声明它负责迁移到哪一个版本；点击版本左侧的箭头展开查看插件描述并开关插件。",
                 classes="hint",
             )
             yield VerticalScroll(id="plugin-list")
@@ -279,11 +337,27 @@ class PluginsScreen(Screen[None]):
         self._refresh()
 
     def _refresh(self) -> None:
+        """Rebuild the list, grouping plugins by their declared target version."""
+
         box = self.query_one("#plugin-list", VerticalScroll)
         box.remove_children()
         assert self._store is not None
-        for info in self._store.list_plugins():
-            box.mount(PluginCard(info, self._store))
+        infos = self._store.list_plugins()
+        by_version: dict[str, list[PluginInfo]] = {}
+        for info in infos:
+            by_version.setdefault(info.target_version, []).append(info)
+        format_by_version = {profile.game_version: profile.pack_format for profile in PROFILES}
+        for profile in PROFILES:
+            if profile.game_version in by_version:
+                box.mount(
+                    VersionSection(
+                        profile.game_version, profile.pack_format, by_version[profile.game_version], self._store
+                    )
+                )
+        # Plugins written for versions that are not registered yet (e.g. ahead of
+        # a release) stay browsable at the end of the list.
+        for version in sorted(set(by_version) - set(format_by_version)):
+            box.mount(VersionSection(version, None, by_version[version], self._store))
 
     def _install_flow(self, path: Path | None) -> None:
         if path is None:
@@ -381,6 +455,10 @@ class MigrationScreen(Screen[None]):
                 yield Checkbox("创建子文件夹", id="output-subfolder")
                 yield Input(placeholder="子文件夹名称（字母/数字/._-）", id="output-subfolder-name")
             yield Static("目标版本（勾选要迁移到的版本）", classes="section-title")
+            yield Static(
+                "目标版本由已注册的正式发布自动生成；每个版本对应的迁移插件可在“插件管理”中按版本查看与开关。",
+                classes="hint",
+            )
             with Horizontal(id="target-columns"):
                 with Vertical(id="target-col-a"):
                     for profile in PROFILES[: len(PROFILES) // 2]:
@@ -388,6 +466,7 @@ class MigrationScreen(Screen[None]):
                             f"{profile.game_version}  （格式 {profile.pack_format}）",
                             value=True,
                             id=_target_widget_id(profile.game_version),
+                            classes="-textual-compact",
                         )
                 with Vertical(id="target-col-b"):
                     for profile in PROFILES[len(PROFILES) // 2 :]:
@@ -395,29 +474,68 @@ class MigrationScreen(Screen[None]):
                             f"{profile.game_version}  （格式 {profile.pack_format}）",
                             value=True,
                             id=_target_widget_id(profile.game_version),
+                            classes="-textual-compact",
                         )
             with Horizontal(classes="button-row"):
-                yield Button("全选", id="targets-all")
+                yield Button("全选", id="targets-all", variant="primary")
                 yield Button("全不选", id="targets-none")
             yield Static("迁移策略", classes="section-title")
             with Horizontal(id="policy-columns"):
-                with Vertical(id="policy-col-a"):
-                    yield Checkbox("允许模拟迁移（allow_emulated）", value=True, id="policy-emulated")
-                    yield Checkbox("允许有损迁移（allow_lossy）", id="policy-lossy")
-                with Vertical(id="policy-col-b"):
-                    yield Checkbox("允许未知迁移（allow_unknown）", id="policy-unknown")
-                    yield Checkbox("警告即失败（fail_on_warnings）", id="policy-fail-warnings")
+                with Vertical(classes="policy-col"):
+                    with Vertical(classes="policy-option"):
+                        yield Checkbox(
+                            "允许模拟迁移（allow_emulated）",
+                            value=True,
+                            id="policy-emulated",
+                            classes="-textual-compact",
+                        )
+                        yield Static(
+                            "模拟迁移：按等价规则改写结构，结果与目标版本行为一致但不逐字相同。",
+                            classes="policy-desc",
+                        )
+                    with Vertical(classes="policy-option"):
+                        yield Checkbox(
+                            "允许有损迁移（allow_lossy）",
+                            id="policy-lossy",
+                            classes="-textual-compact",
+                        )
+                        yield Static(
+                            "有损迁移：接受会丢失部分信息的改写结果，例如精度舍入或字段移除。",
+                            classes="policy-desc",
+                        )
+                with Vertical(classes="policy-col"):
+                    with Vertical(classes="policy-option"):
+                        yield Checkbox(
+                            "允许未知迁移（allow_unknown）",
+                            id="policy-unknown",
+                            classes="-textual-compact",
+                        )
+                        yield Static(
+                            "未知迁移：接受无法确认是否等价的改写，需要事后人工复核。",
+                            classes="policy-desc",
+                        )
+                    with Vertical(classes="policy-option"):
+                        yield Checkbox(
+                            "警告即失败（fail_on_warnings）",
+                            id="policy-fail-warnings",
+                            classes="-textual-compact",
+                        )
+                        yield Static(
+                            "警告即失败：构建中出现任何警告都视为失败，常用于严格校验。",
+                            classes="policy-desc",
+                        )
             yield Static(
                 "默认只允许无损与模拟迁移；有损/未知迁移需要显式勾选，unsupported（目标版本没有等价机制）永远拒绝。",
                 classes="hint",
             )
             with Horizontal(classes="button-row"):
                 yield Button("开始迁移", id="build-start", variant="success")
+            yield Static("构建日志", classes="section-title")
             yield RichLog(id="build-log", markup=True, wrap=True, highlight=True)
         yield Footer()
 
     def on_mount(self) -> None:
-        """Load the optional config and apply its target defaults."""
+        """Load the optional config, apply its target defaults, and hint at the log."""
 
         self._config = load_config(self._config_path) if self._config_path else ProjectConfig()
         assert self._config is not None
@@ -426,6 +544,7 @@ class MigrationScreen(Screen[None]):
             for profile in PROFILES:
                 checkbox = self.query_one(f"#{_target_widget_id(profile.game_version)}", Checkbox)
                 checkbox.value = profile.game_version in selected
+        self.query_one("#build-log", RichLog).write("[dim]构建日志将显示在这里；点击“开始迁移”开始。[/dim]")
 
     def action_open_plugins(self) -> None:
         """Push the plugin management screen."""
@@ -529,6 +648,7 @@ class MigrationScreen(Screen[None]):
         if output is None:
             return
         log = self.query_one("#build-log", RichLog)
+        log.clear()
         self.run_worker(
             self._build_task(log, pack_path, output, targets, self._policy()),
             thread=True,
@@ -662,12 +782,30 @@ class DpCompatApp(App[None]):
     #target-columns, #policy-columns {
         height: auto;
     }
-    #target-col-a, #target-col-b, #policy-col-a, #policy-col-b {
+    #target-col-a, #target-col-b, .policy-col {
         width: 1fr;
+        height: auto;
+    }
+    #target-col-a Checkbox, #target-col-b Checkbox, .policy-option Checkbox {
+        height: 1;
+        border: none;
+        padding: 0;
+    }
+    .policy-option {
+        height: auto;
+        margin-bottom: 1;
+    }
+    .policy-option Checkbox {
+        width: auto;
+    }
+    .policy-desc {
+        color: $text-muted;
+        padding-left: 1;
+        text-wrap: wrap;
     }
     .button-row {
         height: 3;
-        padding-top: 1;
+        margin-top: 1;
     }
     .button-row Button {
         margin-right: 1;
@@ -722,6 +860,47 @@ class DpCompatApp(App[None]):
     .plugin-remove {
         width: 12;
         margin-top: 1;
+    }
+    .version-section {
+        height: auto;
+        border: round $primary 40%;
+        padding: 0 1;
+        margin-bottom: 1;
+    }
+    .version-head {
+        height: 3;
+    }
+    .version-head .version-fold {
+        width: 6;
+        height: 3;
+        margin-right: 1;
+    }
+    .version-title {
+        width: auto;
+        text-style: bold;
+        padding-top: 1;
+    }
+    .version-format {
+        width: auto;
+        color: $text-muted;
+        padding-top: 1;
+        padding-left: 1;
+    }
+    .version-unregistered {
+        color: $warning;
+    }
+    .version-meta {
+        width: 1fr;
+        color: $text-muted;
+        text-align: right;
+        padding-top: 1;
+    }
+    .version-body {
+        height: auto;
+        padding-bottom: 1;
+    }
+    .version-body PluginCard {
+        margin-bottom: 1;
     }
     #picker-tree {
         height: 1fr;

@@ -27,6 +27,8 @@
 
 提交前运行 `uv run pytest tests/test_versions.py tests/test_manifests.py -q` 与 `uv run dpcompat versions --json`。
 
+登记后该版本会自动出现在 TUI 主界面的目标版本勾选列表与 CLI 的 `--target` 解析中；为它编写迁移插件时，把插件的 `target_version` 指向该版本字符串（见 `PLUGIN_DEVELOPMENT.zh-CN.md`），TUI 插件页会自动为它生成分组。
+
 ## 2. 登记 feature 最低版本（features.json）
 
 在 `dpcompat/data/features.json` 的 `features` 数组追加“该版本首次出现的语法事实”：

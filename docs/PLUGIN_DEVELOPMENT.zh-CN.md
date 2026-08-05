@@ -24,6 +24,9 @@ PLUGIN = {
     "name": "我的数据包规则",
     "description": "把演示命名空间的旧字段改名为新字段，并处理 94.1 边界。",
     "version": "1.0.0",
+    # 必填：本插件负责迁移到哪个正式版本，插件管理页按它分组；
+    # 版本必须已在 dpcompat/data/releases.json 中注册。
+    "target_version": "1.21.11",
     # 可选：规则没有自带 official_sources 时，使用这里的一手来源。
     "official_sources": ["https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-11"],
 }
@@ -49,6 +52,7 @@ RULES = (DemoRenameRule(),)
 要求：
 
 - `PLUGIN` 字典必填：`id`（小写 `[a-z0-9._@-]`）、`name`、`description` 都非空且去首尾空格；
+- `PLUGIN["target_version"]` 必填：声明本插件负责迁移到哪一个正式版本（例如 `"1.21.9"`），必须是在 `releases.json` 中注册的版本；插件管理页按它分组，新增正式版后即可直接为它写插件；
 - 必须暴露 `RULES` 或 `dpcompat_rules()`；
 - 每条规则的 `id` 稳定唯一，与内置规则不冲突；
 - 每条规则要么自带 `official_sources`（HTTP(S) 一手来源），要么由 `PLUGIN["official_sources"]` 统一提供——注册表拒绝无来源规则；
@@ -67,7 +71,8 @@ RULES = (DemoRenameRule(),)
     "id": "my-json-rules@88",
     "name": "我的声明式规则",
     "description": "把 demo:old 精确替换为 demo:new。",
-    "version": "1.0.0"
+    "version": "1.0.0",
+    "target_version": "1.21.9"
   },
   "rules": [
     {
@@ -100,7 +105,7 @@ RULES = (DemoRenameRule(),)
 }
 ```
 
-也接受单个 `DeclarativeRuleSpec` 作为裸文件（此时插件名取规则 id，描述取规则 description）。
+也接受单个 `DeclarativeRuleSpec` 作为裸文件（此时插件名取规则 id，描述取规则 description，`target_version` 按 boundary 对应的 pack format 自动推导为使用该格式的最新正式版）。
 
 声明式语言只有两种操作：`json_exact_value`（节点与 `old` 完全相等才替换）与 `json_rename_key`（精确 key 改名，目标 key 已存在则报错）。`include` 必须是包内安全 glob；`lossless` 必须同时定义 upgrade 与 downgrade。没有 regex、没有任意代码、不能删除未知字段——需要这些能力的规则请写成 Python 插件。
 
@@ -132,11 +137,13 @@ dpcompat tui
 ```
 
 - 主界面按 `p`（或点击右上角“插件管理”）进入插件页；
-- 每个插件一张卡片：名称、id、描述、内置/文件徽标、规则列表、启用勾选框；
-- 点击“安装插件文件...”用文件树选择 `.py`/`.json` 文件，安装后立即出现在列表；
+- 插件页是一个**版本列表**：每个有插件的目标版本是一个可折叠分组（`▸`/`▾`），标题显示版本号、pack format 与“已启用/总数”；
+- 展开某版本后，里面是该版本对应的插件卡片：名称、id、描述、内置/文件徽标、规则数与启用勾选框；
+- 点击“安装插件文件...”用文件树选择 `.py`/`.json` 文件，安装后立即出现在对应版本分组；
 - 点击“创建插件模板...”选择位置（可勾选创建同名子文件夹）生成可直接编辑的模板项目，适合快速开始开发；
 - 文件插件卡片上有“卸载”按钮；
 - 所有开关即时持久化。
+- 新增正式版（`releases.json`）后，主界面目标版本列表自动出现新版本；为它编写的插件只需把 `target_version` 指向新版本，插件页自动出现对应分组。
 
 模板项目包含 `插件名.py`（`PLUGIN` 元数据 + 示例规则骨架）与 `README.md`，生成后即可用 `dpcompat plugin install` 或 TUI 安装。
 
