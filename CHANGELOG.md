@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.4.0] - 2026-08-05
+
+### Added
+
+- Textual TUI (`dpcompat tui`): pick a data-pack directory or ZIP, choose target releases with checkboxes, adjust the fail-closed policy, run the migration, and browse the build log and report.
+- Installable rule plugins: Python (`.py`) and declarative JSON plugin files install into a user plugin directory (`DPCOMPAT_PLUGIN_DIR` or `~/.dpcompat/plugins`) from the CLI (`dpcompat plugin install/remove/enable/disable/list`) or the TUI file picker.
+- Built-in migration rules are grouped into thirteen named built-in plugins with Chinese name/description metadata; every plugin (built-in or installed) can be enabled or disabled persistently, and disabled plugins contribute no rules to builds.
+- `docs/PLUGIN_DEVELOPMENT.zh-CN.md` documents the plugin file formats, metadata contract, safety requirements, and CLI/TUI workflows.
+- `docs/ADDING_A_NEW_VERSION.zh-CN.md` documents the four-layer process for registering new releases, feature minimums, and migration rules.
+- Pyright joins the dev dependency group and the `typecheck`/`check` gates.
+
+### Changed
+
+- The effective rule registry now reflects plugin enable state in `rules`, `plan`, `build`, and `validate`.
+- `RuleRegistry.load_module_file()` loads Python rule modules from plugin file paths; `create_rule_registry()` accepts an `enabled_rule_ids` filter.
+
+### Fixed
+
+- Pyright diagnostics in `tests/test_migrations.py` (optional narrowing) and pre-existing issues in `migrations/text.py` and `rules/registry.py`.
+
+### Validation boundary
+
+- The real `phainon_v1.4` bundle under `test_datapack/` is used for local static validation and is excluded from version control.
+- Vanilla server and gameplay validation remain explicit release follow-ups.
+
 ## [0.3.1] - 2026-08-02
 
 ### Added

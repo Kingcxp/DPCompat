@@ -11,6 +11,7 @@ dist/
 logs/
 .coverage
 .test_datapack/
+test_datapack/
 
 __MACOSX/
 .DS_Store
