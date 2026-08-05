@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.3] - 2026-08-05
+
+### Added
+
+- Plugins can ship a full Markdown documentation page (`readme` in `PLUGIN` metadata / the JSON plugin wrapper; the scaffold template includes one). The TUI plugin detail page renders it like a VS Code extension page. Built-in plugins get an auto-generated detail page from their catalog metadata.
+- TUI: the plugin manager list items are now buttons — each target version is one full-width toggle row, and each plugin is a two-line row (name, version, origin, enable status dot, short description). Clicking a plugin row opens the detail page with enable/disable and (for file plugins) uninstall actions.
+
+### Fixed
+
+- TUI: the version sections lost their content-sized height during the list-item rework, which made the sections overlap and the expand rows unclickable; they are content-sized again.
+- TUI: removing the double refresh on screen mount/resume, which raced two concurrent list rebuilds and could leave freshly mounted sections without children.
+- CLI: `dpcompat plugin list --json` no longer embeds the full readme text in the machine-readable listing.
+
 ## [0.4.2] - 2026-08-05
 
 ### Added
