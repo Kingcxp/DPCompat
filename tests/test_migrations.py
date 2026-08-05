@@ -8,6 +8,7 @@ build pipeline; end-to-end behavior is covered by ``test_build.py`` and
 
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -662,6 +663,85 @@ class FallbackTests(unittest.TestCase):
             self.assertEqual(
                 {item.code for item in application.diagnostics},
                 {"fallback-resolution-unused"},
+            )
+
+
+class MacroAndNestedEntityTextTests(unittest.TestCase):
+    """Regressions for quoted scalar macros and recursive entity text components."""
+
+    def _snbt_quoted_json(self, payload: dict) -> str:
+        """Serialize a dict the way SNBT quotes an embedded JSON component string."""
+
+        compact = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        return json.dumps(compact, ensure_ascii=False)
+
+    def test_quoted_macro_preserves_static_component_structure(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(
+                root,
+                "data/demo/function/test.mcfunction",
+                '$tellraw @s {"text":"$(label)","clickEvent":'
+                '{"action":"suggest_command","value":"/tp @s $(x) $(y) $(z)"}}\n',
+            )
+            rule = TextComponentRule()
+            diagnostics = rule.apply(MigrationContext(root, PackFormat(61), PackFormat(71), BuildPolicy())).diagnostics
+            self.assertEqual(diagnostics, [])
+            text = (root / "data/demo/function/test.mcfunction").read_text(encoding="utf-8")
+            self.assertIn("click_event:", text)
+            self.assertIn('command:"/tp @s $(x) $(y) $(z)"', text)
+            self.assertIn('text:"$(label)"', text)
+
+    def test_nested_passenger_entity_text_upgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            custom_name = self._snbt_quoted_json({"text": "root"})
+            display_text = self._snbt_quoted_json({"text": "$(damage)", "bold": True})
+            write(
+                root,
+                "data/demo/function/test.mcfunction",
+                f"$summon item ~ ~ ~ {{CustomName:{custom_name},"
+                f'Passengers:[{{id:"text_display",text:{display_text}}}]}}\n',
+            )
+            rule = EntitySnbtRule()
+            diagnostics = rule.apply(MigrationContext(root, PackFormat(61), PackFormat(71), BuildPolicy())).diagnostics
+            self.assertEqual(diagnostics, [])
+            text = (root / "data/demo/function/test.mcfunction").read_text(encoding="utf-8")
+            self.assertIn("CustomName:{text:root}", text)
+            self.assertIn('text:{text:"$(damage)",bold:true}', text)
+
+    def test_nested_passenger_entity_text_downgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), 71)
+            write(
+                root,
+                "data/demo/function/test.mcfunction",
+                'summon item ~ ~ ~ {CustomName:{text:"root"},'
+                'Passengers:[{id:"text_display",text:{text:"damage",bold:true}}]}\n',
+            )
+            rule = EntitySnbtRule()
+            diagnostics = rule.apply(MigrationContext(root, PackFormat(71), PackFormat(61), BuildPolicy())).diagnostics
+            self.assertEqual(diagnostics, [])
+            text = (root / "data/demo/function/test.mcfunction").read_text(encoding="utf-8")
+            self.assertIn(f"CustomName:{self._snbt_quoted_json({'text': 'root'})}", text)
+            self.assertIn(f"text:{self._snbt_quoted_json({'text': 'damage', 'bold': True})}", text)
+
+    def test_unparseable_embedded_text_is_an_unknown_not_a_warning(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(
+                root,
+                "data/demo/function/test.mcfunction",
+                'summon item ~ ~ ~ {CustomName:"not-json-at-all"}\n',
+            )
+            rule = EntitySnbtRule()
+            result = rule.apply(MigrationContext(root, PackFormat(61), PackFormat(71), BuildPolicy()))
+            self.assertEqual(
+                {item.code for item in result.diagnostics},
+                {"entity-text-component-unknown"},
+            )
+            self.assertTrue(
+                all(item.compatibility.value == "unknown" for item in result.diagnostics)
             )
 
 
