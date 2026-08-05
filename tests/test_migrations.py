@@ -21,6 +21,7 @@ from dpcompat.commands import (
 from dpcompat.entity_data import downgrade_entity_nbt, upgrade_entity_nbt
 from dpcompat import nbt
 from dpcompat.migrations.base import MigrationContext
+from dpcompat.migrations.commands import HorseSaddleSlotRule, SpawnRotationRule
 from dpcompat.migrations.entities import EntitySnbtRule
 from dpcompat.migrations.items import ItemTooltipComponentsRule
 from dpcompat.migrations.structures import StructureEntityNbtRule
@@ -351,6 +352,30 @@ class StructureNbtRuleTests(unittest.TestCase):
             rule = StructureEntityNbtRule()
             rule.apply(MigrationContext(root, PackFormat(61), PackFormat(71), BuildPolicy()))
             self.assertEqual(other.read_bytes(), before)
+
+
+class HorseSaddleSlotRuleTests(unittest.TestCase):
+    def test_slot_token_is_renamed_in_both_directions(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            function = root / "data/demo/function/test.mcfunction"
+            function.parent.mkdir(parents=True, exist_ok=True)
+            function.write_text("item replace entity @s horse.saddle with minecraft:saddle\n", encoding="utf-8")
+            rule = HorseSaddleSlotRule()
+            rule.apply(MigrationContext(root, PackFormat(61), PackFormat(71), BuildPolicy()))
+            self.assertIn("item replace entity @s saddle with ", function.read_text(encoding="utf-8"))
+            rule.apply(MigrationContext(root, PackFormat(71), PackFormat(61), BuildPolicy()))
+            self.assertIn(" horse.saddle ", function.read_text(encoding="utf-8"))
+
+    def test_storage_paths_are_not_substring_rewritten(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            function = root / "data/demo/function/test.mcfunction"
+            function.parent.mkdir(parents=True, exist_ok=True)
+            function.write_text('data get entity @s horse.saddle\n', encoding="utf-8")
+            rule = HorseSaddleSlotRule()
+            rule.apply(MigrationContext(root, PackFormat(61), PackFormat(71), BuildPolicy()))
+            self.assertIn("horse.saddle", function.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
