@@ -19,9 +19,11 @@ from dpcompat.commands import (
     parse_command_line,
 )
 from dpcompat.entity_data import downgrade_entity_nbt, upgrade_entity_nbt
+from dpcompat import nbt
 from dpcompat.migrations.base import MigrationContext
 from dpcompat.migrations.entities import EntitySnbtRule
 from dpcompat.migrations.items import ItemTooltipComponentsRule
+from dpcompat.migrations.structures import StructureEntityNbtRule
 from dpcompat.migrations.text import TextComponentRule
 from dpcompat.models import BuildPolicy, PackFormat, Severity
 from dpcompat.text_components import (
@@ -287,6 +289,68 @@ class EntitySnbtRuleTests(unittest.TestCase):
                 {item.code for item in result.diagnostics},
                 {"macro-entity-nbt-needs-runtime-parse"},
             )
+
+
+class StructureNbtRuleTests(unittest.TestCase):
+    def _structure(self) -> nbt.NbtDocument:
+        entity = nbt.NbtTag(
+            nbt.TAG_COMPOUND,
+            {
+                "id": nbt.NbtTag(nbt.TAG_STRING, "minecraft:zombie"),
+                "FallDistance": nbt.NbtTag(nbt.TAG_FLOAT, 2.0),
+            },
+        )
+        entry = nbt.NbtTag(
+            nbt.TAG_COMPOUND,
+            {
+                "pos": nbt.NbtTag(nbt.TAG_LIST, nbt.NbtList(nbt.TAG_DOUBLE, [])),
+                "blockPos": nbt.NbtTag(nbt.TAG_INT_ARRAY, [0, 0, 0]),
+                "nbt": entity,
+            },
+        )
+        return nbt.NbtDocument(
+            "",
+            nbt.NbtTag(
+                nbt.TAG_COMPOUND,
+                {
+                    "DataVersion": nbt.NbtTag(nbt.TAG_INT, 0),
+                    "size": nbt.NbtTag(nbt.TAG_LIST, nbt.NbtList(nbt.TAG_INT, [])),
+                    "palette": nbt.NbtTag(nbt.TAG_LIST, nbt.NbtList(nbt.TAG_COMPOUND, [])),
+                    "blocks": nbt.NbtTag(nbt.TAG_LIST, nbt.NbtList(nbt.TAG_COMPOUND, [])),
+                    "entities": nbt.NbtTag(nbt.TAG_LIST, nbt.NbtList(nbt.TAG_COMPOUND, [entry])),
+                },
+            ),
+            compressed=True,
+        )
+
+    def test_structure_entity_upgrade_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            structure = root / "data/demo/structure/test.nbt"
+            structure.parent.mkdir(parents=True, exist_ok=True)
+            nbt.dump_path(structure, self._structure())
+            rule = StructureEntityNbtRule()
+            rule.apply(MigrationContext(root, PackFormat(61), PackFormat(71), BuildPolicy()))
+            document = nbt.load_path(structure)
+            root_tag = nbt.compound(document.root)
+            assert root_tag is not None
+            entries = nbt.list_values(root_tag["entities"], nbt.TAG_COMPOUND)
+            assert entries is not None
+            entity = nbt.compound(nbt.compound(entries[0])["nbt"])
+            assert entity is not None
+            self.assertIn("fall_distance", entity)
+            self.assertNotIn("FallDistance", entity)
+
+    def test_non_structure_nbt_files_are_untouched(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            other = root / "data/demo/whatever/data.nbt"
+            other.parent.mkdir(parents=True, exist_ok=True)
+            nbt.dump_path(other, self._structure())
+            before = other.read_bytes()
+            rule = StructureEntityNbtRule()
+            rule.apply(MigrationContext(root, PackFormat(61), PackFormat(71), BuildPolicy()))
+            self.assertEqual(other.read_bytes(), before)
 
 
 if __name__ == "__main__":
