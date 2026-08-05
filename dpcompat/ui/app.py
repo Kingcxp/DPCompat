@@ -1,9 +1,14 @@
 """Textual screens for DPCompat: migration form, plugin manager, file picker.
 
-The migration screen is the default view.  The plugins screen and the file
-picker are pushed on top of it as modal screens.  All heavy work (pack
-materialization and compilation) runs in a worker thread and reports back
-through :meth:`App.call_from_thread`.
+The migration screen is the default view.  The plugins screen, the file picker,
+and the template screen are pushed on top of it as modal screens.  All heavy
+work (pack materialization and compilation) runs in a worker thread and reports
+back through :meth:`App.call_from_thread`.
+
+Layout notes: static text widgets inside horizontal rows must be given explicit
+widths (``auto`` resolves to the full row width in Textual), and plugin cards
+must use ``height: auto`` instead of the container default ``1fr`` so a scroll
+list does not squeeze every card to a few rows.
 """
 
 from __future__ import annotations
@@ -35,8 +40,16 @@ from ..config import ProjectConfig, load_config
 from ..engine import compile_pack
 from ..models import BuildPolicy, Diagnostic, VersionProfile
 from ..packio import materialize_source
-from ..plugins import PluginInfo, PluginStore, create_effective_registry
+from ..plugins import (
+    PluginInfo,
+    PluginStore,
+    create_effective_registry,
+    scaffold_plugin_template,
+)
 from ..versions import PROFILES
+
+_SUBFOLDER_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+_TEMPLATE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
 
 def _widget_safe(value: str) -> str:
@@ -60,11 +73,13 @@ class FilePickerScreen(Screen[Path | None]):
         title: str,
         start: Path | None = None,
         allowed_suffixes: tuple[str, ...] = (),
+        directories_only: bool = False,
     ) -> None:
         super().__init__()
         self._title = title
         self._start = (start or Path.cwd()).expanduser().resolve()
         self._allowed_suffixes = allowed_suffixes
+        self._directories_only = directories_only
 
     def compose(self) -> ComposeResult:
         """Render the tree browser with pick/cancel/up controls."""
@@ -98,10 +113,13 @@ class FilePickerScreen(Screen[Path | None]):
     def _pick(self) -> None:
         current = self._current()
         if current is None:
-            self.notify("请先在左侧目录树中选择一项", severity="warning")
+            self.notify("请先在目录树中选择一项", severity="warning")
             return
         if current.is_dir():
             self.dismiss(current)
+            return
+        if self._directories_only:
+            self.notify("这里需要选择一个文件夹", severity="warning")
             return
         if self._allowed_suffixes and current.suffix.lower() not in self._allowed_suffixes:
             allowed = "、".join(self._allowed_suffixes)
@@ -145,17 +163,16 @@ class PluginCard(Vertical):
         """Render one plugin card with its toggle and metadata."""
 
         safe = _widget_safe(self._info.id)
+        badge = "内置" if self._info.origin == "builtin" else "文件"
         with Vertical(classes="plugin-card"):
-            with Horizontal():
+            with Horizontal(classes="plugin-head"):
                 yield Checkbox(value=self._info.enabled, id=f"enable-{safe}")
                 yield Static(Text(self._info.name, style="bold"), classes="plugin-name")
-                yield Static(self._info.id, classes="plugin-id")
                 yield Static(
-                    "内置" if self._info.origin == "builtin" else "文件",
-                    classes=f"plugin-badge {'badge-builtin' if self._info.origin == 'builtin' else 'badge-file'}",
+                    badge, classes=f"plugin-badge {'badge-builtin' if self._info.origin == 'builtin' else 'badge-file'}"
                 )
+            yield Static(f"{self._info.id} · {len(self._info.rules)} 条规则", classes="plugin-id")
             yield Static(self._info.description, classes="plugin-desc")
-            yield Static(f"规则: {', '.join(self._info.rules) or '—'}", classes="plugin-rules")
             if self._info.origin == "file":
                 yield Button("卸载", id=f"remove-{safe}", classes="plugin-remove")
 
@@ -173,8 +190,61 @@ class PluginCard(Vertical):
         self.post_message(self.Removed(self._info.id))
 
 
+class TemplateScreen(Screen[Path | None]):
+    """Ask for a plugin template name and whether to create a subfolder."""
+
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [Binding("escape", "cancel", "取消")]
+
+    def __init__(self, location: Path) -> None:
+        super().__init__()
+        self._location = location
+
+    def compose(self) -> ComposeResult:
+        """Render the template name form."""
+
+        yield Header(show_clock=False)
+        with Vertical(id="template-root"):
+            yield Static("创建插件模板", classes="screen-title")
+            yield Static(f"位置：{self._location}", id="template-location")
+            yield Input(placeholder="插件名称（小写字母/数字/._-）", id="template-name")
+            yield Checkbox("在所选文件夹下创建同名子文件夹", id="template-subfolder")
+            with Horizontal(classes="button-row"):
+                yield Button("创建", id="template-create", variant="success")
+                yield Button("取消", id="template-cancel")
+        yield Footer()
+
+    def action_cancel(self) -> None:
+        """Close the template screen without creating anything."""
+
+        self.dismiss(None)
+
+    def _create(self) -> None:
+        name = self.query_one("#template-name", Input).value.strip()
+        if not _TEMPLATE_NAME_RE.fullmatch(name):
+            self.notify(
+                "插件名称只能包含小写字母、数字、'.'、'_'、'-'，且不能以数字开头",
+                severity="error",
+            )
+            return
+        subfolder = self.query_one("#template-subfolder", Checkbox).value
+        try:
+            created = scaffold_plugin_template(name, self._location, subfolder=subfolder)
+        except ValueError as exc:
+            self.notify(str(exc), severity="error")
+            return
+        self.dismiss(created)
+
+    @on(Button.Pressed, "#template-create")
+    def _on_create(self) -> None:
+        self._create()
+
+    @on(Button.Pressed, "#template-cancel")
+    def _on_cancel(self) -> None:
+        self.action_cancel()
+
+
 class PluginsScreen(Screen[None]):
-    """Browse, install, and toggle built-in and installed plugins."""
+    """Browse, install, scaffold, and toggle built-in and installed plugins."""
 
     BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("escape", "app.pop_screen", "返回")
@@ -185,7 +255,7 @@ class PluginsScreen(Screen[None]):
         self._store: PluginStore | None = None
 
     def compose(self) -> ComposeResult:
-        """Render the plugin list with install and navigation buttons."""
+        """Render the plugin list with install, scaffold, and navigation buttons."""
 
         yield Header(show_clock=False)
         with Vertical(id="plugins-root"):
@@ -197,6 +267,7 @@ class PluginsScreen(Screen[None]):
             yield VerticalScroll(id="plugin-list")
             with Horizontal(classes="button-row"):
                 yield Button("安装插件文件...", id="plugins-install", variant="primary")
+                yield Button("创建插件模板...", id="plugins-template", variant="primary")
                 yield Button("刷新", id="plugins-refresh")
                 yield Button("返回", id="plugins-back")
         yield Footer()
@@ -226,6 +297,17 @@ class PluginsScreen(Screen[None]):
         self.notify(f"已安装插件：{info.name} ({info.id})")
         self._refresh()
 
+    def _template_location(self, location: Path | None) -> None:
+        if location is None:
+            return
+        self.app.push_screen(TemplateScreen(location), callback=self._template_result)
+
+    def _template_result(self, created: Path | None) -> None:
+        if created is None:
+            return
+        self.notify(f"插件模板已创建：{created}")
+        self._refresh()
+
     @on(Button.Pressed, "#plugins-install")
     def _on_install(self) -> None:
         self.app.push_screen(
@@ -234,6 +316,13 @@ class PluginsScreen(Screen[None]):
                 allowed_suffixes=(".py", ".json"),
             ),
             callback=self._install_flow,
+        )
+
+    @on(Button.Pressed, "#plugins-template")
+    def _on_template(self) -> None:
+        self.app.push_screen(
+            FilePickerScreen(title="选择插件模板位置（文件夹）", directories_only=True),
+            callback=self._template_location,
         )
 
     @on(Button.Pressed, "#plugins-refresh")
@@ -269,38 +358,61 @@ class MigrationScreen(Screen[None]):
         self._config: ProjectConfig | None = None
 
     def compose(self) -> ComposeResult:
-        """Render the migration form: pack, targets, policy, and build log."""
+        """Render the migration form: pack, output, targets, policy, and log."""
 
         yield Header(show_clock=False)
         with VerticalScroll(id="migration-root"):
-            yield Static("数据包兼容性迁移", classes="screen-title")
+            with Horizontal(id="top-bar"):
+                yield Static("数据包兼容性迁移", classes="screen-title", id="main-title")
+                yield Button("插件管理", id="open-plugins", variant="primary")
+                yield Button("退出", id="quit-app", variant="error")
+            yield Static("数据包", classes="section-title")
             with Horizontal(classes="field-row"):
                 yield Input(
                     placeholder="数据包目录或 ZIP 文件路径",
                     id="pack-path-input",
                 )
                 yield Button("浏览...", id="pack-browse", variant="primary")
+            yield Static("输出", classes="section-title")
             with Horizontal(classes="field-row"):
                 yield Input(value="dist", id="output-input", placeholder="输出目录（相对当前目录）")
+                yield Button("浏览...", id="output-browse", variant="primary")
+            with Horizontal(classes="field-row"):
+                yield Checkbox("创建子文件夹", id="output-subfolder")
+                yield Input(placeholder="子文件夹名称（字母/数字/._-）", id="output-subfolder-name")
             yield Static("目标版本（勾选要迁移到的版本）", classes="section-title")
-            with VerticalScroll(id="target-list", classes="target-list"):
-                for profile in PROFILES:
-                    yield Checkbox(
-                        f"{profile.game_version}  （格式 {profile.pack_format}）",
-                        value=True,
-                        id=_target_widget_id(profile.game_version),
-                    )
+            with Horizontal(id="target-columns"):
+                with Vertical(id="target-col-a"):
+                    for profile in PROFILES[: len(PROFILES) // 2]:
+                        yield Checkbox(
+                            f"{profile.game_version}  （格式 {profile.pack_format}）",
+                            value=True,
+                            id=_target_widget_id(profile.game_version),
+                        )
+                with Vertical(id="target-col-b"):
+                    for profile in PROFILES[len(PROFILES) // 2 :]:
+                        yield Checkbox(
+                            f"{profile.game_version}  （格式 {profile.pack_format}）",
+                            value=True,
+                            id=_target_widget_id(profile.game_version),
+                        )
             with Horizontal(classes="button-row"):
                 yield Button("全选", id="targets-all")
                 yield Button("全不选", id="targets-none")
-            yield Static("迁移策略（默认拒绝有损/未知迁移）", classes="section-title")
-            yield Checkbox("允许模拟迁移 allow_emulated", value=True, id="policy-emulated")
-            yield Checkbox("允许有损迁移 allow_lossy", id="policy-lossy")
-            yield Checkbox("允许未知迁移 allow_unknown", id="policy-unknown")
-            yield Checkbox("警告即失败 fail_on_warnings", id="policy-fail-warnings")
+            yield Static("迁移策略", classes="section-title")
+            with Horizontal(id="policy-columns"):
+                with Vertical(id="policy-col-a"):
+                    yield Checkbox("允许模拟迁移（allow_emulated）", value=True, id="policy-emulated")
+                    yield Checkbox("允许有损迁移（allow_lossy）", id="policy-lossy")
+                with Vertical(id="policy-col-b"):
+                    yield Checkbox("允许未知迁移（allow_unknown）", id="policy-unknown")
+                    yield Checkbox("警告即失败（fail_on_warnings）", id="policy-fail-warnings")
+            yield Static(
+                "默认只允许无损与模拟迁移；有损/未知迁移需要显式勾选，unsupported（目标版本没有等价机制）永远拒绝。",
+                classes="hint",
+            )
             with Horizontal(classes="button-row"):
                 yield Button("开始迁移", id="build-start", variant="success")
-                yield Button("插件管理", id="open-plugins")
             yield RichLog(id="build-log", markup=True, wrap=True, highlight=True)
         yield Footer()
 
@@ -335,19 +447,55 @@ class MigrationScreen(Screen[None]):
             fail_on_warnings=self.query_one("#policy-fail-warnings", Checkbox).value,
         )
 
+    def _resolve_output(self) -> Path | None:
+        base = self.query_one("#output-input", Input).value.strip() or "dist"
+        output = Path(base).expanduser()
+        if self.query_one("#output-subfolder", Checkbox).value:
+            name = self.query_one("#output-subfolder-name", Input).value.strip()
+            if not _SUBFOLDER_NAME_RE.fullmatch(name):
+                self.notify(
+                    "子文件夹名称只能包含字母、数字、'.'、'_'、'-'",
+                    severity="error",
+                )
+                return None
+            output = output / name
+        return output
+
+    @on(Checkbox.Changed, "#output-subfolder")
+    def _on_output_subfolder(self, event: Checkbox.Changed) -> None:
+        self.query_one("#output-subfolder-name", Input).styles.display = "block" if event.checkbox.value else "none"
+
     @on(Button.Pressed, "#pack-browse")
     def _on_browse_pack(self) -> None:
+        current = self.query_one("#pack-path-input", Input).value.strip()
+        start = Path(current).parent if current else None
         self.app.push_screen(
             FilePickerScreen(
                 title="选择数据包目录或 ZIP 文件",
+                start=start,
                 allowed_suffixes=(".zip",),
             ),
             callback=self._set_pack_path,
         )
 
+    @on(Button.Pressed, "#output-browse")
+    def _on_browse_output(self) -> None:
+        current = self.query_one("#output-input", Input).value.strip()
+        start = Path(current).expanduser() if current else None
+        if start is not None and not start.is_dir():
+            start = start.parent
+        self.app.push_screen(
+            FilePickerScreen(title="选择输出文件夹", start=start, directories_only=True),
+            callback=self._set_output_path,
+        )
+
     def _set_pack_path(self, path: Path | None) -> None:
         if path is not None:
             self.query_one("#pack-path-input", Input).value = str(path)
+
+    def _set_output_path(self, path: Path | None) -> None:
+        if path is not None:
+            self.query_one("#output-input", Input).value = str(path)
 
     @on(Button.Pressed, "#targets-all")
     def _on_targets_all(self) -> None:
@@ -363,6 +511,10 @@ class MigrationScreen(Screen[None]):
     def _on_open_plugins(self) -> None:
         self.action_open_plugins()
 
+    @on(Button.Pressed, "#quit-app")
+    def _on_quit(self) -> None:
+        self.app.exit()
+
     @on(Button.Pressed, "#build-start")
     def _on_build_start(self) -> None:
         pack_path = self.query_one("#pack-path-input", Input).value.strip()
@@ -373,7 +525,9 @@ class MigrationScreen(Screen[None]):
         if not targets:
             self.notify("请至少勾选一个目标版本", severity="error")
             return
-        output = self.query_one("#output-input", Input).value.strip() or "dist"
+        output = self._resolve_output()
+        if output is None:
+            return
         log = self.query_one("#build-log", RichLog)
         self.run_worker(
             self._build_task(log, pack_path, output, targets, self._policy()),
@@ -386,7 +540,7 @@ class MigrationScreen(Screen[None]):
         self,
         log: RichLog,
         pack_path: str,
-        output: str,
+        output: Path,
         targets: list[VersionProfile],
         policy: BuildPolicy,
     ) -> None:
@@ -406,7 +560,7 @@ class MigrationScreen(Screen[None]):
                 detection, results, universal = compile_pack(
                     root,
                     targets,
-                    Path(output),
+                    output,
                     self._config.universal,
                     policy=policy,
                     fallbacks=self._config.fallbacks,
@@ -432,7 +586,7 @@ class MigrationScreen(Screen[None]):
                 write(self._diagnostic_line(diagnostic))
         if universal:
             write(f"[bold]通用 overlay 包：{universal}[/bold]")
-        write(f"报告：{Path(output).resolve() / 'compatibility-report.json'}")
+        write(f"报告：{output.resolve() / 'compatibility-report.json'}")
         self.app.call_from_thread(self.notify, "迁移完成", severity="information")
 
     @staticmethod
@@ -449,17 +603,34 @@ class DpCompatApp(App[None]):
 
     TITLE = "DPCompat"
     SUB_TITLE = "数据包兼容性迁移工具"
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [Binding("q", "quit", "退出")]
     CSS = """
     Screen {
         layout: vertical;
     }
-    #migration-root, #plugins-root, #picker-root {
+    Button {
+        height: 3;
+        content-align: center middle;
+    }
+    #migration-root, #plugins-root, #picker-root, #template-root {
         padding: 1 2;
     }
     .screen-title {
         text-style: bold;
         color: $accent;
         padding-bottom: 1;
+    }
+    #main-title {
+        width: 1fr;
+        padding-top: 1;
+    }
+    #top-bar {
+        height: 3;
+        align-horizontal: right;
+    }
+    #top-bar Button {
+        margin-left: 1;
+        width: 16;
     }
     .section-title {
         text-style: bold;
@@ -468,38 +639,72 @@ class DpCompatApp(App[None]):
     }
     .hint {
         color: $text-muted;
+        padding-top: 1;
         padding-bottom: 1;
     }
     .field-row {
         height: 3;
     }
-    .target-list {
-        height: 12;
-        border: round $primary;
+    .field-row Input {
+        width: 1fr;
+        margin-right: 1;
+    }
+    .field-row Button {
+        width: 14;
+    }
+    #output-subfolder {
+        width: 22;
+    }
+    #output-subfolder-name {
+        width: 1fr;
+        display: none;
+    }
+    #target-columns, #policy-columns {
+        height: auto;
+    }
+    #target-col-a, #target-col-b, #policy-col-a, #policy-col-b {
+        width: 1fr;
     }
     .button-row {
         height: 3;
         padding-top: 1;
+    }
+    .button-row Button {
+        margin-right: 1;
+    }
+    #build-start {
+        width: 24;
     }
     #build-log {
         height: 16;
         border: round $primary;
         margin-top: 1;
     }
+    #plugin-list {
+        height: 1fr;
+    }
+    PluginCard {
+        height: auto;
+    }
     .plugin-card {
-        border: round $surface;
+        height: auto;
+        border: round $primary 40%;
         padding: 1;
         margin-bottom: 1;
     }
-    .plugin-name {
-        padding: 0 1;
+    .plugin-head {
+        height: 3;
     }
-    .plugin-id {
-        color: $text-muted;
+    .plugin-head Checkbox {
+        width: auto;
+    }
+    .plugin-name {
+        width: 1fr;
         padding: 0 1;
     }
     .plugin-badge {
-        padding: 0 1;
+        width: 6;
+        text-align: center;
     }
     .badge-builtin {
         color: $success;
@@ -507,11 +712,11 @@ class DpCompatApp(App[None]):
     .badge-file {
         color: $warning;
     }
-    .plugin-desc {
+    .plugin-id {
+        color: $text-muted;
         padding-top: 1;
     }
-    .plugin-rules {
-        color: $text-muted;
+    .plugin-desc {
         padding-top: 1;
     }
     .plugin-remove {
@@ -521,6 +726,9 @@ class DpCompatApp(App[None]):
     #picker-tree {
         height: 1fr;
         border: round $primary;
+    }
+    #template-root Input, #template-root Checkbox {
+        margin-bottom: 1;
     }
     """
 
