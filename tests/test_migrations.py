@@ -23,6 +23,7 @@ from dpcompat import nbt
 from dpcompat.migrations.base import MigrationContext
 from dpcompat.migrations.commands import HorseSaddleSlotRule, SpawnRotationRule
 from dpcompat.migrations.entities import EntitySnbtRule
+from dpcompat.migrations.identifiers import ChainRenameRule
 from dpcompat.migrations.items import ItemTooltipComponentsRule
 from dpcompat.migrations.structures import StructureEntityNbtRule
 from dpcompat.migrations.text import TextComponentRule
@@ -376,6 +377,45 @@ class HorseSaddleSlotRuleTests(unittest.TestCase):
             rule = HorseSaddleSlotRule()
             rule.apply(MigrationContext(root, PackFormat(61), PackFormat(71), BuildPolicy()))
             self.assertIn("horse.saddle", function.read_text(encoding="utf-8"))
+
+
+class ChainRenameRuleTests(unittest.TestCase):
+    def test_json_scalars_are_renamed_but_object_keys_are_not(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(
+                root,
+                "data/demo/recipe/test.json",
+                '{"type":"minecraft:crafting_shapeless","chain":"minecraft:chain",'
+                '"result":{"id":"minecraft:chain","count":1}}\n',
+            )
+            rule = ChainRenameRule()
+            rule.apply(MigrationContext(root, PackFormat(80), PackFormat(88), BuildPolicy()))
+            value = (root / "data/demo/recipe/test.json").read_text(encoding="utf-8")
+            self.assertIn('"chain": "minecraft:iron_chain"', value)
+            self.assertIn('"id": "minecraft:iron_chain"', value)
+            self.assertNotIn("minecraft:chain", value)  # the object key "chain" stays
+
+    def test_command_atoms_are_renamed_without_matching_substrings(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            function = root / "data/demo/function/test.mcfunction"
+            function.parent.mkdir(parents=True, exist_ok=True)
+            function.write_text("give @s minecraft:chain\ngive @s minecraft:chainmail_helmet\n", encoding="utf-8")
+            rule = ChainRenameRule()
+            rule.apply(MigrationContext(root, PackFormat(80), PackFormat(88), BuildPolicy()))
+            text = function.read_text(encoding="utf-8")
+            self.assertIn("minecraft:iron_chain\n", text)
+            self.assertIn("minecraft:chainmail_helmet\n", text)
+
+    def test_downgrade_restores_chain(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [88, 0])
+            write(root, "data/demo/recipe/test.json", '{"id":"minecraft:iron_chain"}\n')
+            rule = ChainRenameRule()
+            rule.apply(MigrationContext(root, PackFormat(88), PackFormat(80), BuildPolicy()))
+            value = (root / "data/demo/recipe/test.json").read_text(encoding="utf-8")
+            self.assertIn("minecraft:chain", value)
 
 
 if __name__ == "__main__":
