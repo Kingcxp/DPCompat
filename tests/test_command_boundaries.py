@@ -13,6 +13,7 @@ from typing import Any
 
 from dpcompat.migrations.base import MigrationContext
 from dpcompat.migrations.gamerules import GameRuleRegistryRule
+from dpcompat.migrations.worldborder import WorldBorderTimeRule
 from dpcompat.models import BuildPolicy, PackFormat, Severity
 
 from helpers import make_pack, write
@@ -80,3 +81,59 @@ def test_gamerule_downgrade_restores_camel_case_names() -> None:
         _run_gamerules(root, 94.1, 88)
         text = (root / "data/demo/function/test.mcfunction").read_text(encoding="utf-8")
         assert "gamerule doDaylightCycle true" in text
+
+
+def _run_worldborder(root: Path, source: Any, target: Any, *, policy: BuildPolicy | None = None) -> list:
+    rule = WorldBorderTimeRule()
+    result = rule.apply(
+        MigrationContext(root, PackFormat.parse(source), PackFormat.parse(target), policy or BuildPolicy())
+    )
+    return result.diagnostics
+
+
+def test_worldborder_upgrade_normalizes_units() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = make_pack(Path(temp_dir) / "pack", [88, 0])
+        write(root, "data/demo/function/test.mcfunction", "worldborder set 100 10\nworldborder add 50 5\n")
+        diagnostics = _run_worldborder(root, 88, 94.1)
+        text = (root / "data/demo/function/test.mcfunction").read_text(encoding="utf-8")
+        assert "worldborder set 100 10s" in text
+        assert "worldborder add 50 5s" in text
+        # The unit rewrite is never presented as lossless: real time became game ticks.
+        assert {item.code for item in diagnostics} == {"worldborder-time-semantics-changed"}
+        assert all(item.compatibility.value == "unknown" for item in diagnostics)
+
+
+def test_worldborder_downgrade_reverts_whole_seconds() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = make_pack(Path(temp_dir) / "pack", [94, 1])
+        write(root, "data/demo/function/test.mcfunction", "worldborder set 100 10s\n")
+        _run_worldborder(root, 94.1, 88)
+        text = (root / "data/demo/function/test.mcfunction").read_text(encoding="utf-8")
+        assert "worldborder set 100 10" in text
+
+
+def test_worldborder_timed_commands_fail_closed_by_default() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        base = Path(temp_dir)
+        root = make_pack(base / "blocked", [88, 0])
+        write(root, "data/demo/function/test.mcfunction", "worldborder set 100 10\n")
+        diagnostics = _run_worldborder(root, 88, 94.1)
+        assert any(item.severity == Severity.ERROR for item in diagnostics)
+
+        allowed_root = make_pack(base / "allowed", [88, 0])
+        write(allowed_root, "data/demo/function/test.mcfunction", "worldborder set 100 10\n")
+        permitted = _run_worldborder(allowed_root, 88, 94.1, policy=BuildPolicy(allow_unknown=True))
+        assert all(item.severity != Severity.ERROR for item in permitted)
+        text = (allowed_root / "data/demo/function/test.mcfunction").read_text(encoding="utf-8")
+        assert "worldborder set 100 10s" in text
+
+
+def test_worldborder_upgrade_is_idempotent() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = make_pack(Path(temp_dir) / "pack", [88, 0])
+        write(root, "data/demo/function/test.mcfunction", "worldborder set 100 10\n")
+        first = _run_worldborder(root, 88, 94.1, policy=BuildPolicy(allow_unknown=True))
+        second = _run_worldborder(root, 88, 94.1, policy=BuildPolicy(allow_unknown=True))
+        assert all(item.severity != Severity.ERROR for item in first)
+        assert second == []
