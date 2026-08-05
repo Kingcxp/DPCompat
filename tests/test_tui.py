@@ -8,10 +8,10 @@ from pathlib import Path
 import pytest
 from dpcompat.plugins import PluginStore, scaffold_plugin_template
 from dpcompat.ui import DpCompatApp
-from dpcompat.ui.app import PluginsScreen, TemplateScreen, VersionSection
+from dpcompat.ui.app import PluginDetailScreen, PluginsScreen, TemplateScreen, VersionSection
 from dpcompat.versions import PROFILES
 from textual.containers import Vertical
-from textual.widgets import Button, Checkbox, Input
+from textual.widgets import Button, Checkbox, Input, Markdown
 
 
 def _run(coro) -> None:
@@ -51,17 +51,8 @@ def test_tui_plugins_screen_shows_builtin_and_installed_plugins(
             await pilot.press("p")  # open the plugins screen
             await pilot.pause()
             assert isinstance(app.screen, PluginsScreen)
-            toggles = [box for box in app.screen.query(Checkbox) if box.id and box.id.startswith("enable-")]
-            assert len(toggles) >= 13  # every built-in plugin is browsable
-            # Toggle the first built-in plugin off and back on through the UI.
-            first = toggles[0]
-            first.value = False
-            await pilot.pause()
-            first.value = True
-            await pilot.pause()
-            await pilot.press("escape")
-            await pilot.pause()
-            assert not isinstance(app.screen, PluginsScreen)
+            items = [button for button in app.screen.query(Button) if button.has_class("plugin-item")]
+            assert len(items) >= 13  # every built-in plugin is browsable as a row
 
     _run(scenario())
 
@@ -129,13 +120,56 @@ def test_tui_plugins_screen_groups_plugins_by_target_version(
             versions_with_plugins = sorted({info.target_version for info in PluginStore().list_plugins()})
             # Every version that owns plugins gets exactly one collapsible section.
             assert len(sections) == len(versions_with_plugins)
-            # Sections start collapsed: the first plugin card body is hidden.
+            # Sections start collapsed: the first plugin body is hidden.
             body = app.screen.query_one("#version-body-1-21-5", Vertical)
             assert body.styles.display == "none"
-            # Expanding the version header reveals its plugin cards.
+            # Clicking the full-width version header reveals its plugin rows.
             await pilot.click("#fold-1-21-5")
-            await pilot.pause()
+            await pilot.pause(0.3)  # wait out the button's 0.2s active effect
             assert body.styles.display != "none"
+            # Clicking the header again collapses the section.
+            await pilot.click("#fold-1-21-5")
+            await pilot.pause(0.3)
+            assert body.styles.display == "none"
+
+    _run(scenario())
+
+
+def test_tui_plugin_detail_page_toggles_and_documents(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DPCOMPAT_PLUGIN_DIR", str(tmp_path / "plugins"))
+
+    async def scenario() -> None:
+        app = DpCompatApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("p")
+            await pilot.pause()
+            await pilot.click("#fold-1-21-5")
+            await pilot.pause(0.3)
+            # Opening a plugin row shows the detail page with its Markdown docs.
+            await pilot.click("#plugin-text-components-71")
+            await pilot.pause(0.3)
+            assert isinstance(app.screen, PluginDetailScreen)
+            assert app.screen.query_one("#detail-doc", Markdown) is not None
+            # The toggle flips the persisted enable state.
+            await pilot.click("#detail-toggle")
+            await pilot.pause(0.3)
+            store = PluginStore()
+            info = next(item for item in store.list_plugins() if item.id == "text-components@71")
+            assert info.enabled is False
+            # Toggling back and returning to the list works.
+            await pilot.click("#detail-toggle")
+            await pilot.pause(0.3)
+            assert (
+                next(item for item in PluginStore().list_plugins() if item.id == "text-components@71").enabled is True
+            )
+            await pilot.press("escape")
+            await pilot.pause()
+            assert not isinstance(app.screen, PluginDetailScreen)
+            assert isinstance(app.screen, PluginsScreen)
 
     _run(scenario())
 

@@ -17,7 +17,6 @@ import re
 from pathlib import Path
 from typing import ClassVar
 
-from rich.text import Text
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -31,6 +30,7 @@ from textual.widgets import (
     Footer,
     Header,
     Input,
+    Markdown,
     RichLog,
     Static,
     Tree,
@@ -144,15 +144,104 @@ class FilePickerScreen(Screen[Path | None]):
         self.query_one("#picker-current", Static).update(str(parent))
 
 
-class PluginCard(Vertical):
-    """One browsable plugin row: toggle, name, description, and rules."""
+class PluginItem(Button):
+    """One plugin row: name, version, status dot, and a short description.
 
-    class Removed(Message):
-        """The user asked to uninstall this file plugin."""
+    The whole row is a button; pressing it opens the plugin detail page with
+    the plugin's full Markdown documentation, like a VS Code extension.
+    """
 
-        def __init__(self, plugin_id: str) -> None:
+    def __init__(self, info: PluginInfo) -> None:
+        self.info = info
+        status = "●" if info.enabled else "○"
+        status_style = "green" if info.enabled else "dim red"
+        origin = "内置" if info.origin == "builtin" else "文件"
+        label = (
+            f"[bold]{info.name}[/bold]  [dim]v{info.version} · {origin}[/dim]  [{status_style}]{status}[/]"
+            f"\n[dim]{info.description}[/dim]"
+        )
+        super().__init__(label, id=f"plugin-{_widget_safe(info.id)}", classes="plugin-item")
+
+
+class VersionSection(Vertical):
+    """A collapsible group of plugin rows for one target Minecraft version.
+
+    The header is a full-width button so the whole row toggles the body; the
+    body lists one :class:`PluginItem` per plugin of that version.
+    """
+
+    class ExpansionChanged(Message):
+        """The section was expanded or collapsed by the user."""
+
+        def __init__(self, version: str, expanded: bool) -> None:
             super().__init__()
-            self.plugin_id = plugin_id
+            self.version = version
+            self.expanded = expanded
+
+    class PluginSelected(Message):
+        """The user pressed one of the plugin rows."""
+
+        def __init__(self, info: PluginInfo) -> None:
+            super().__init__()
+            self.info = info
+
+    def __init__(
+        self,
+        version: str,
+        pack_format: PackFormat | None,
+        plugins: list[PluginInfo],
+        *,
+        expanded: bool,
+    ) -> None:
+        super().__init__(classes="version-section")
+        self._version = version
+        self._pack_format = pack_format
+        self._plugins = plugins
+        self._expanded = expanded
+        format_part = f"格式 {pack_format}" if pack_format is not None else "未注册版本"
+        enabled = sum(1 for info in plugins if info.enabled)
+        self._head_suffix = f"{version}  ·  {format_part}  ·  {len(plugins)} 个插件 · {enabled}/{len(plugins)} 已启用"
+
+    def compose(self) -> ComposeResult:
+        """Render the toggle header and the collapsible plugin body."""
+
+        safe = _widget_safe(self._version)
+        arrow = "▾" if self._expanded else "▸"
+        yield Button(f"{arrow}  {self._head_suffix}", id=f"fold-{safe}", classes="version-fold")
+        with Vertical(id=f"version-body-{safe}", classes="version-body"):
+            for info in self._plugins:
+                yield PluginItem(info)
+
+    def on_mount(self) -> None:
+        """Start collapsed so the screen reads as a compact version list."""
+
+        if not self._expanded:
+            self.query_one(f"#version-body-{_widget_safe(self._version)}", Vertical).styles.display = "none"
+
+    @on(Button.Pressed, ".version-fold")
+    def _toggle(self, event: Button.Pressed) -> None:
+        """Expand or collapse this version's plugin rows."""
+
+        self._expanded = not self._expanded
+        body = self.query_one(f"#version-body-{_widget_safe(self._version)}", Vertical)
+        body.styles.display = "block" if self._expanded else "none"
+        event.button.label = ("▾" if self._expanded else "▸") + "  " + self._head_suffix
+        self.post_message(self.ExpansionChanged(self._version, self._expanded))
+
+    @on(Button.Pressed, ".plugin-item")
+    def _on_plugin_pressed(self, event: Button.Pressed) -> None:
+        """Forward a plugin row press so the screen can open the detail page."""
+
+        if isinstance(event.button, PluginItem):
+            self.post_message(self.PluginSelected(event.button.info))
+
+
+class PluginDetailScreen(Screen[None]):
+    """Detail page for one plugin: metadata, enable toggle, and its Markdown docs."""
+
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
+        Binding("escape", "app.pop_screen", "返回")
+    ]
 
     def __init__(self, info: PluginInfo, store: PluginStore) -> None:
         super().__init__()
@@ -160,92 +249,57 @@ class PluginCard(Vertical):
         self._store = store
 
     def compose(self) -> ComposeResult:
-        """Render one plugin card with its toggle and metadata."""
+        """Render the plugin header, actions, and the Markdown documentation."""
 
-        safe = _widget_safe(self._info.id)
-        badge = "内置" if self._info.origin == "builtin" else "文件"
-        with Vertical(classes="plugin-card"):
-            with Horizontal(classes="plugin-head"):
-                yield Checkbox(value=self._info.enabled, id=f"enable-{safe}")
-                yield Static(Text(self._info.name, style="bold"), classes="plugin-name")
-                yield Static(
-                    badge, classes=f"plugin-badge {'badge-builtin' if self._info.origin == 'builtin' else 'badge-file'}"
-                )
-            yield Static(f"{self._info.id} · {len(self._info.rules)} 条规则", classes="plugin-id")
-            yield Static(self._info.description, classes="plugin-desc")
-            if self._info.origin == "file":
-                yield Button("卸载", id=f"remove-{safe}", classes="plugin-remove")
+        origin = "内置" if self._info.origin == "builtin" else "文件"
+        kind = {"python": "Python", "declarative": "声明式", "builtin": "内置"}[self._info.kind]
+        type_part = f"{origin}插件（{kind}）" if self._info.origin == "file" else "内置插件"
+        yield Header(show_clock=False)
+        with Vertical(id="detail-root"):
+            yield Static(self._info.name, classes="screen-title")
+            yield Static(
+                f"{self._info.id} · v{self._info.version} · {type_part} · 目标 {self._info.target_version}",
+                id="detail-meta",
+            )
+            with Horizontal(classes="button-row"):
+                yield Button("禁用" if self._info.enabled else "启用", id="detail-toggle", variant="primary")
+                if self._info.origin == "file":
+                    yield Button("卸载", id="detail-remove", variant="error")
+                yield Button("返回", id="detail-back")
+            if self._info.readme:
+                yield Markdown(self._info.readme, id="detail-doc")
+            else:
+                yield Static(self._info.description, classes="hint")
+                yield Static("该插件没有提供 Markdown 说明文档，只有上面的简短描述。", classes="hint")
+        yield Footer()
 
-    @on(Checkbox.Changed)
-    def _on_toggle(self, event: Checkbox.Changed) -> None:
-        if not event.checkbox.id or not event.checkbox.id.startswith("enable-"):
+    @on(Button.Pressed, "#detail-toggle")
+    def _on_toggle(self) -> None:
+        """Flip the persisted enable state and refresh the toggle label."""
+
+        enabled = not self._info.enabled
+        self._store.set_enabled(self._info.id, enabled)
+        self._info = self._info.model_copy(update={"enabled": enabled})
+        self.query_one("#detail-toggle", Button).label = "禁用" if enabled else "启用"
+        self.notify(f"{'已启用' if enabled else '已禁用'}插件：{self._info.name}")
+
+    @on(Button.Pressed, "#detail-remove")
+    def _on_remove(self) -> None:
+        """Uninstall this file plugin and return to the plugin list."""
+
+        try:
+            self._store.uninstall(self._info.id)
+        except ValueError as exc:
+            self.notify(str(exc), severity="error")
             return
-        self._store.set_enabled(self._info.id, event.checkbox.value)
-        self.notify(f"{'已启用' if event.checkbox.value else '已禁用'}插件：{self._info.name}")
+        self.notify(f"已卸载插件：{self._info.id}")
+        self.app.pop_screen()
 
-    @on(Button.Pressed)
-    def _on_remove(self, event: Button.Pressed) -> None:
-        if not event.button.id or not event.button.id.startswith("remove-"):
-            return
-        self.post_message(self.Removed(self._info.id))
+    @on(Button.Pressed, "#detail-back")
+    def _on_back(self) -> None:
+        """Return to the plugin list."""
 
-
-class VersionSection(Vertical):
-    """A collapsible group of plugin cards for one target Minecraft version.
-
-    The plugins screen is organized as a version list: each section header shows
-    the version, its pack format, and how many of its plugins are enabled; the
-    cards live in a body that expands and collapses behind the fold button.
-    """
-
-    def __init__(
-        self,
-        version: str,
-        pack_format: PackFormat | None,
-        plugins: list[PluginInfo],
-        store: PluginStore,
-    ) -> None:
-        super().__init__()
-        self._version = version
-        self._pack_format = pack_format
-        self._plugins = plugins
-        self._store = store
-        self._expanded = False
-
-    def compose(self) -> ComposeResult:
-        """Render the version header and the collapsible plugin body."""
-
-        safe = _widget_safe(self._version)
-        enabled = sum(1 for info in self._plugins if info.enabled)
-        with Vertical(classes="version-section"):
-            with Horizontal(classes="version-head"):
-                yield Button("▸" if not self._expanded else "▾", id=f"fold-{safe}", classes="version-fold")
-                yield Static(f"{self._version}", classes="version-title")
-                if self._pack_format is not None:
-                    yield Static(f"格式 {self._pack_format}", classes="version-format")
-                else:
-                    yield Static("未注册版本", classes="version-format version-unregistered")
-                yield Static(
-                    f"{len(self._plugins)} 个插件 · {enabled}/{len(self._plugins)} 已启用",
-                    classes="version-meta",
-                )
-            with Vertical(id=f"version-body-{safe}", classes="version-body"):
-                for info in self._plugins:
-                    yield PluginCard(info, self._store)
-
-    def on_mount(self) -> None:
-        """Start collapsed so the screen reads as a compact version list."""
-
-        self.query_one(f"#version-body-{_widget_safe(self._version)}", Vertical).styles.display = "none"
-
-    @on(Button.Pressed, ".version-fold")
-    def _toggle(self, event: Button.Pressed) -> None:
-        """Expand or collapse this version's plugin cards."""
-
-        self._expanded = not self._expanded
-        body = self.query_one(f"#version-body-{_widget_safe(self._version)}", Vertical)
-        body.styles.display = "block" if self._expanded else "none"
-        event.button.label = "▾" if self._expanded else "▸"
+        self.app.pop_screen()
 
 
 class TemplateScreen(Screen[Path | None]):
@@ -311,6 +365,7 @@ class PluginsScreen(Screen[None]):
     def __init__(self) -> None:
         super().__init__()
         self._store: PluginStore | None = None
+        self._expanded_versions: set[str] = set()
 
     def compose(self) -> ComposeResult:
         """Render the version-grouped plugin list with install and scaffold buttons."""
@@ -319,7 +374,7 @@ class PluginsScreen(Screen[None]):
         with Vertical(id="plugins-root"):
             yield Static("插件管理", classes="screen-title")
             yield Static(
-                "插件按目标版本分组，每个插件声明它负责迁移到哪一个版本；点击版本左侧的箭头展开查看插件描述并开关插件。",
+                "插件按目标版本分组：点击版本行展开该版本的插件列表，点击插件行查看它的完整文档、启用/禁用或卸载。",
                 classes="hint",
             )
             yield VerticalScroll(id="plugin-list")
@@ -351,13 +406,23 @@ class PluginsScreen(Screen[None]):
             if profile.game_version in by_version:
                 box.mount(
                     VersionSection(
-                        profile.game_version, profile.pack_format, by_version[profile.game_version], self._store
+                        profile.game_version,
+                        profile.pack_format,
+                        by_version[profile.game_version],
+                        expanded=profile.game_version in self._expanded_versions,
                     )
                 )
         # Plugins written for versions that are not registered yet (e.g. ahead of
         # a release) stay browsable at the end of the list.
         for version in sorted(set(by_version) - set(format_by_version)):
-            box.mount(VersionSection(version, None, by_version[version], self._store))
+            box.mount(
+                VersionSection(
+                    version,
+                    None,
+                    by_version[version],
+                    expanded=version in self._expanded_versions,
+                )
+            )
 
     def _install_flow(self, path: Path | None) -> None:
         if path is None:
@@ -407,15 +472,25 @@ class PluginsScreen(Screen[None]):
     def _on_back(self) -> None:
         self.app.pop_screen()
 
-    @on(PluginCard.Removed)
-    def _on_removed(self, event: PluginCard.Removed) -> None:
+    @on(VersionSection.ExpansionChanged)
+    def _on_expansion(self, event: VersionSection.ExpansionChanged) -> None:
+        """Remember which sections are open so a refresh keeps them open."""
+
+        if event.expanded:
+            self._expanded_versions.add(event.version)
+        else:
+            self._expanded_versions.discard(event.version)
+
+    @on(VersionSection.PluginSelected)
+    def _on_plugin_selected(self, event: VersionSection.PluginSelected) -> None:
+        """Open the detail page for the selected plugin and refresh on return."""
+
         assert self._store is not None
-        try:
-            self._store.uninstall(event.plugin_id)
-        except ValueError as exc:
-            self.notify(str(exc), severity="error")
-            return
-        self.notify(f"已卸载插件：{event.plugin_id}")
+        self.app.push_screen(PluginDetailScreen(event.info, self._store), callback=self._detail_closed)
+
+    def _detail_closed(self, result: object) -> None:
+        """Rebuild the list when the detail page is closed (toggle or uninstall)."""
+
         self._refresh()
 
 
@@ -821,86 +896,38 @@ class DpCompatApp(App[None]):
     #plugin-list {
         height: 1fr;
     }
-    PluginCard {
-        height: auto;
-    }
-    .plugin-card {
-        height: auto;
-        border: round $primary 40%;
-        padding: 1;
-        margin-bottom: 1;
-    }
-    .plugin-head {
-        height: 3;
-    }
-    .plugin-head Checkbox {
-        width: auto;
-    }
-    .plugin-name {
-        width: 1fr;
-        padding: 0 1;
-    }
-    .plugin-badge {
-        width: 6;
-        text-align: center;
-    }
-    .badge-builtin {
-        color: $success;
-    }
-    .badge-file {
-        color: $warning;
-    }
-    .plugin-id {
-        color: $text-muted;
-        padding-top: 1;
-    }
-    .plugin-desc {
-        padding-top: 1;
-    }
-    .plugin-remove {
-        width: 12;
-        margin-top: 1;
-    }
     .version-section {
         height: auto;
-        border: round $primary 40%;
-        padding: 0 1;
         margin-bottom: 1;
     }
-    .version-head {
-        height: 3;
-    }
-    .version-head .version-fold {
-        width: 6;
-        height: 3;
-        margin-right: 1;
-    }
-    .version-title {
-        width: auto;
-        text-style: bold;
-        padding-top: 1;
-    }
-    .version-format {
-        width: auto;
-        color: $text-muted;
-        padding-top: 1;
-        padding-left: 1;
-    }
-    .version-unregistered {
-        color: $warning;
-    }
-    .version-meta {
+    .version-fold {
         width: 1fr;
-        color: $text-muted;
-        text-align: right;
-        padding-top: 1;
+        height: 3;
+        content-align: left middle;
+        text-align: left;
     }
     .version-body {
         height: auto;
+        padding-top: 1;
+    }
+    .plugin-item {
+        width: 1fr;
+        height: auto;
+        content-align: left middle;
+        text-align: left;
+        margin-bottom: 1;
+    }
+    #detail-root {
+        height: 1fr;
+    }
+    #detail-meta {
+        color: $text-muted;
         padding-bottom: 1;
     }
-    .version-body PluginCard {
-        margin-bottom: 1;
+    #detail-doc {
+        height: 1fr;
+        border: round $primary 40%;
+        padding: 1;
     }
     #picker-tree {
         height: 1fr;

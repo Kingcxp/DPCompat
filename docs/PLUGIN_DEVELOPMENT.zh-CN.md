@@ -27,6 +27,13 @@ PLUGIN = {
     # 必填：本插件负责迁移到哪个正式版本，插件管理页按它分组；
     # 版本必须已在 dpcompat/data/releases.json 中注册。
     "target_version": "1.21.11",
+    # 可选：插件详情页展示的完整 Markdown 文档（TUI 中点击插件即可阅读，类似 VS Code 扩展页）。
+    "readme": """# 我的数据包规则
+
+## 这个插件做什么
+
+在这里用 Markdown 详细说明插件负责的迁移。
+""",
     # 可选：规则没有自带 official_sources 时，使用这里的一手来源。
     "official_sources": ["https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-11"],
 }
@@ -53,6 +60,7 @@ RULES = (DemoRenameRule(),)
 
 - `PLUGIN` 字典必填：`id`（小写 `[a-z0-9._@-]`）、`name`、`description` 都非空且去首尾空格；
 - `PLUGIN["target_version"]` 必填：声明本插件负责迁移到哪一个正式版本（例如 `"1.21.9"`），必须是在 `releases.json` 中注册的版本；插件管理页按它分组，新增正式版后即可直接为它写插件；
+- `PLUGIN["readme"]` 可选：一段 Markdown 文档，TUI 插件详情页会完整渲染它；不提供时详情页只显示简短描述；
 - 必须暴露 `RULES` 或 `dpcompat_rules()`；
 - 每条规则的 `id` 稳定唯一，与内置规则不冲突；
 - 每条规则要么自带 `official_sources`（HTTP(S) 一手来源），要么由 `PLUGIN["official_sources"]` 统一提供——注册表拒绝无来源规则；
@@ -72,7 +80,8 @@ RULES = (DemoRenameRule(),)
     "name": "我的声明式规则",
     "description": "把 demo:old 精确替换为 demo:new。",
     "version": "1.0.0",
-    "target_version": "1.21.9"
+    "target_version": "1.21.9",
+    "readme": "# 我的声明式规则\n\n把 `demo:old` 精确替换为 `demo:new`。"
   },
   "rules": [
     {
@@ -137,11 +146,11 @@ dpcompat tui
 ```
 
 - 主界面按 `p`（或点击右上角“插件管理”）进入插件页；
-- 插件页是一个**版本列表**：每个有插件的目标版本是一个可折叠分组（`▸`/`▾`），标题显示版本号、pack format 与“已启用/总数”；
-- 展开某版本后，里面是该版本对应的插件卡片：名称、id、描述、内置/文件徽标、规则数与启用勾选框；
+- 插件页是一个**版本列表**：每个有插件的目标版本是一行整宽按钮（`▸`/`▾` 切换），点击展开/收起该版本的插件列表；
+- 展开后每个插件也是一行按钮：第一行是插件名、版本、来源徽标与启用状态（● 已启用 / ○ 已禁用），第二行是简短描述；
+- 点击插件行打开**详情页**（类似 VS Code 扩展页）：显示插件 id、版本、来源、目标版本与 `PLUGIN["readme"]` 提供的完整 Markdown 文档，并提供“启用/禁用”与（文件插件的）“卸载”按钮；
 - 点击“安装插件文件...”用文件树选择 `.py`/`.json` 文件，安装后立即出现在对应版本分组；
 - 点击“创建插件模板...”选择位置（可勾选创建同名子文件夹）生成可直接编辑的模板项目，适合快速开始开发；
-- 文件插件卡片上有“卸载”按钮；
 - 所有开关即时持久化。
 - 新增正式版（`releases.json`）后，主界面目标版本列表自动出现新版本；为它编写的插件只需把 `target_version` 指向新版本，插件页自动出现对应分组。
 
