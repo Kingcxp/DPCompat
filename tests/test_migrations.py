@@ -20,6 +20,7 @@ from dpcompat.commands import (
 )
 from dpcompat.entity_data import downgrade_entity_nbt, upgrade_entity_nbt
 from dpcompat.migrations.base import MigrationContext
+from dpcompat.migrations.entities import EntitySnbtRule
 from dpcompat.migrations.items import ItemTooltipComponentsRule
 from dpcompat.migrations.text import TextComponentRule
 from dpcompat.models import BuildPolicy, PackFormat, Severity
@@ -234,6 +235,58 @@ class ItemTooltipRuleTests(unittest.TestCase):
             self.assertIn("minecraft:hide_tooltip", value)
             self.assertIn("show_in_tooltip", value)
             self.assertNotIn("tooltip_display", value)
+
+
+class EntitySnbtRuleTests(unittest.TestCase):
+    def test_summon_payload_upgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(
+                root,
+                "data/demo/function/test.mcfunction",
+                "summon minecraft:zombie ~ ~ ~ "
+                '{FallDistance:1.0f,ArmorItems:[{},{},{},{id:"minecraft:diamond_helmet",count:1}]}\n',
+            )
+            rule = EntitySnbtRule()
+            rule.apply(MigrationContext(root, PackFormat(61), PackFormat(71), BuildPolicy()))
+            text = (root / "data/demo/function/test.mcfunction").read_text(encoding="utf-8")
+            self.assertIn("fall_distance", text)
+            self.assertIn("equipment", text)
+            self.assertNotIn("ArmorItems", text)
+
+    def test_data_merge_entity_payload_upgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(root, "data/demo/function/test.mcfunction", "data merge entity @s {FallDistance:2.0f}\n")
+            rule = EntitySnbtRule()
+            rule.apply(MigrationContext(root, PackFormat(61), PackFormat(71), BuildPolicy()))
+            text = (root / "data/demo/function/test.mcfunction").read_text(encoding="utf-8")
+            self.assertIn("fall_distance", text)
+
+    def test_storage_compounds_are_left_untouched(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(
+                root,
+                "data/demo/function/test.mcfunction",
+                "data modify storage demo:main equipment set value {ArmorItems:[1,2,3]}\n",
+            )
+            before = (root / "data/demo/function/test.mcfunction").read_text(encoding="utf-8")
+            rule = EntitySnbtRule()
+            rule.apply(MigrationContext(root, PackFormat(61), PackFormat(71), BuildPolicy()))
+            after = (root / "data/demo/function/test.mcfunction").read_text(encoding="utf-8")
+            self.assertEqual(before, after)
+
+    def test_unquoted_macro_entity_nbt_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(root, "data/demo/function/test.mcfunction", "$summon minecraft:zombie ~ ~ ~ $(nbt)\n")
+            rule = EntitySnbtRule()
+            result = rule.apply(MigrationContext(root, PackFormat(61), PackFormat(71), BuildPolicy()))
+            self.assertEqual(
+                {item.code for item in result.diagnostics},
+                {"macro-entity-nbt-needs-runtime-parse"},
+            )
 
 
 if __name__ == "__main__":
