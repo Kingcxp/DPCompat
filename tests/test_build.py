@@ -7,6 +7,7 @@ from pathlib import Path
 from dpcompat.detector import detect_pack
 from dpcompat.engine import compile_pack
 from dpcompat.models import PackFormat
+from dpcompat.report import build_report
 from dpcompat.versions import resolve_profile
 
 from helpers import make_pack, write
@@ -146,6 +147,26 @@ class EngineBuildTests(unittest.TestCase):
             )
             self.assertTrue(all(result.successful for result in results))
             self.assertIsNone(universal)
+
+    def test_report_records_detection_policy_and_hashes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            root = make_pack(base / "pack")
+            write(root, "data/demo/function/load.mcfunction", "say loaded\n")
+            output = base / "out"
+            detection, results, universal = compile_pack(
+                root,
+                [resolve_profile("1.21.4")],
+                output,
+                universal=False,
+            )
+            report = build_report(detection, results, universal)
+            self.assertEqual(report["schema"], 2)
+            self.assertEqual(report["source"]["detected_format"], "61")
+            self.assertTrue(report["targets"][0]["success"])
+            self.assertRegex(report["targets"][0]["sha256"], r"^[0-9a-f]{64}$")
+            self.assertEqual(report["policy"]["allow_lossy"], False)
+            self.assertIn("stable_releases_only", report["scope"])
 
 
 if __name__ == "__main__":
