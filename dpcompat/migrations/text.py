@@ -96,14 +96,15 @@ def _walk(value: Any, upgrading: bool, key: str | None = None) -> tuple[Any, int
 def _component_token_index(values: tuple[str, ...]) -> int | None:
     if not values:
         return None
-    if values[0] == "tellraw" and len(values) >= 3:
+    head = values[0]
+    if head == "tellraw" and len(values) >= 3:
         return 2
-    if values[0] == "title" and len(values) >= 4 and values[2] in {"title", "subtitle", "actionbar"}:
+    if head == "title" and len(values) >= 4 and values[2] in {"title", "subtitle", "actionbar"}:
         return 3
-    if len(values) >= 5 and values[0] == "bossbar" and values[1] == "set" and values[3] == "name":
+    if len(values) >= 5 and head == "bossbar" and values[1] == "set" and values[3] == "name":
         return 4
     if (
-        values[0] == "team"
+        head == "team"
         and len(values) >= 5
         and values[1] == "modify"
         and values[3] in {"displayName", "prefix", "suffix"}

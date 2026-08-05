@@ -31,7 +31,7 @@ from dpcompat.migrations.recipes import Recipe26Rule, TimeCheckClockRule
 from dpcompat.migrations.resources import FilteredLootRule, TestEnvironmentClockRule, TimelineClockRule
 from dpcompat.migrations.structures import StructureEntityNbtRule
 from dpcompat.migrations.text import TextComponentRule
-from dpcompat.models import BuildPolicy, PackFormat, Severity
+from dpcompat.models import BuildPolicy, Compatibility, PackFormat, Severity
 from dpcompat.text_components import (
     TextComponentMigrationError,
     downgrade_component,
@@ -337,7 +337,9 @@ class StructureNbtRuleTests(unittest.TestCase):
             assert root_tag is not None
             entries = nbt.list_values(root_tag["entities"], nbt.TAG_COMPOUND)
             assert entries is not None
-            entity = nbt.compound(nbt.compound(entries[0])["nbt"])
+            entry = nbt.compound(entries[0])
+            assert entry is not None
+            entity = nbt.compound(entry["nbt"])
             assert entity is not None
             self.assertIn("fall_distance", entity)
             self.assertNotIn("FallDistance", entity)
@@ -638,8 +640,8 @@ class FallbackTests(unittest.TestCase):
             application = apply_fallback_files(spec, make_pack(Path(temp_dir) / "target"))
             resolve_with_fallback(diagnostics, spec, application)
             self.assertEqual(application.resolved_diagnostics, 1)
-            self.assertEqual(diagnostics[0].severity.value, 10)  # INFO
-            self.assertEqual(diagnostics[0].compatibility.value, "emulated")
+            self.assertEqual(diagnostics[0].severity, Severity.INFO)
+            self.assertEqual(diagnostics[0].compatibility, Compatibility.EMULATED)
 
     def test_unused_resolution_is_visible(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -731,7 +733,7 @@ class MacroAndNestedEntityTextTests(unittest.TestCase):
                 {item.code for item in result.diagnostics},
                 {"entity-text-component-unknown"},
             )
-            self.assertTrue(all(item.compatibility.value == "unknown" for item in result.diagnostics))
+            self.assertTrue(all(item.compatibility == Compatibility.UNKNOWN for item in result.diagnostics))
 
 
 if __name__ == "__main__":
