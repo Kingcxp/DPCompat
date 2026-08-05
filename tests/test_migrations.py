@@ -24,6 +24,7 @@ from dpcompat.migrations.base import MigrationContext
 from dpcompat.migrations.commands import HorseSaddleSlotRule, SpawnRotationRule
 from dpcompat.migrations.entities import EntitySnbtRule
 from dpcompat.migrations.identifiers import ChainRenameRule
+from dpcompat.migrations.resources import FilteredLootRule
 from dpcompat.migrations.items import ItemTooltipComponentsRule
 from dpcompat.migrations.structures import StructureEntityNbtRule
 from dpcompat.migrations.text import TextComponentRule
@@ -455,6 +456,44 @@ class SpawnRotationRuleTests(unittest.TestCase):
             )
             self.assertIn("spawnpoint-pitch-cannot-downgrade", {item.code for item in permitted.diagnostics})
             self.assertTrue(all(item.severity.value < 30 for item in permitted.diagnostics))
+
+
+class FilteredLootRuleTests(unittest.TestCase):
+    def test_modifier_is_renamed_to_on_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(
+                root,
+                "data/demo/item_modifier/test.json",
+                '{"function":"minecraft:filtered","modifier":{"function":"minecraft:set_count","count":2}}\n',
+            )
+            rule = FilteredLootRule()
+            rule.apply(MigrationContext(root, PackFormat(88), PackFormat(94, 1), BuildPolicy()))
+            value = (root / "data/demo/item_modifier/test.json").read_text(encoding="utf-8")
+            self.assertIn("on_pass", value)
+            self.assertNotIn("\"modifier\"", value)
+
+    def test_on_fail_blocks_downgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [94, 1])
+            write(
+                root,
+                "data/demo/item_modifier/test.json",
+                '{"function":"minecraft:filtered","on_pass":{"function":"minecraft:set_count","count":2},'
+                '"on_fail":{"function":"minecraft:set_count","count":0}}\n',
+            )
+            rule = FilteredLootRule()
+            result = rule.apply(MigrationContext(root, PackFormat(94, 1), PackFormat(88), BuildPolicy()))
+            self.assertEqual({item.code for item in result.diagnostics}, {"filtered-on-fail-cannot-downgrade"})
+
+    def test_unrelated_loot_functions_are_untouched(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(root, "data/demo/loot_table/test.json", '{"function":"minecraft:set_count","count":2}\n')
+            before = (root / "data/demo/loot_table/test.json").read_text(encoding="utf-8")
+            rule = FilteredLootRule()
+            rule.apply(MigrationContext(root, PackFormat(88), PackFormat(94, 1), BuildPolicy()))
+            self.assertEqual((root / "data/demo/loot_table/test.json").read_text(encoding="utf-8"), before)
 
 
 if __name__ == "__main__":
