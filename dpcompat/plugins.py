@@ -27,7 +27,7 @@ from pydantic import Field, HttpUrl, field_validator
 
 from .config import ProjectConfig
 from .migrations import BUILTIN_RULES
-from .models import FrozenModel
+from .models import FrozenModel, PackFormat
 from .rules import DeclarativeMigrationRule, RuleRegistry, create_rule_registry
 from .rules.schema import DeclarativeRuleSpec
 
@@ -52,6 +52,8 @@ PLUGIN = {{
     "name": "{name}",
     "description": "在这里描述这个插件负责什么迁移。",
     "version": "0.1.0",
+    # 声明本插件负责迁移到哪个正式版本；版本必须已在 releases.json 中注册。
+    "target_version": "1.21.9",
     "official_sources": [
         "https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-9"
     ],
@@ -78,6 +80,7 @@ RULES = (ExampleRule(),)
 _TEMPLATE_README = """# {name} 插件模板
 
 - `{name}.py` 是插件本体：`PLUGIN` 元数据 + `RULES` 规则元组。
+- `PLUGIN["target_version"]` 声明该插件负责迁移到的正式版本（必须已在 releases.json 中注册），插件管理页按它分组。
 - 安装：`dpcompat plugin install {name}.py`（或 TUI 插件管理页 -> 安装插件文件）。
 - 安装后可用 `dpcompat plugin list` 查看，`dpcompat plugin disable/enable {name}@88` 开关。
 - 开发前请阅读 `docs/PLUGIN_DEVELOPMENT.zh-CN.md` 与 `docs/RULE_AUTHORING.zh-CN.md`。
@@ -92,6 +95,10 @@ class PluginMeta(FrozenModel):
     name: str = Field(min_length=1)
     description: str = Field(min_length=1)
     version: str = Field(default="1.0.0", pattern=r"^[0-9][0-9A-Za-z.+-]*$")
+    # The Minecraft release this plugin migrates towards.  It must be a
+    # registered stable release whose pack format matches one of the plugin's
+    # rule boundaries, so the plugin list can group rules by version.
+    target_version: str = Field(pattern=r"^[0-9]+(?:\.[0-9]+){1,2}$")
     official_sources: tuple[HttpUrl, ...] = ()
 
     @field_validator("name", "description")
@@ -122,6 +129,7 @@ class PluginInfo(FrozenModel):
     enabled: bool
     rules: tuple[str, ...] = ()
     path: str | None = None
+    target_version: str = Field(pattern=r"^[0-9]+(?:\.[0-9]+){1,2}$")
 
     @classmethod
     def from_meta(
@@ -143,22 +151,25 @@ class PluginInfo(FrozenModel):
             enabled=True,
             rules=rules,
             path=path,
+            target_version=meta.target_version,
         )
 
 
-_BUILTIN_PLUGIN_DEFS: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
+_BUILTIN_PLUGIN_DEFS: tuple[tuple[str, str, str, tuple[str, ...], str], ...] = (
     (
         "text-components@71",
         "文本组件事件迁移",
         "将 1.21.5 之前的 clickEvent/hoverEvent 事件字段迁移为 snake_case 与 action 专用字段，"
         "覆盖已知 JSON 文本位置与命令内的 SNBT 组件。",
         ("text-component.events-and-inline-snbt@71",),
+        "1.21.5",
     ),
     (
         "item-components@71",
         "物品 tooltip 组件迁移",
         "把各物品组件局部的 show_in_tooltip 合并进 minecraft:tooltip_display，并转换官方明确简化的组件形态。",
         ("item-components.tooltip-display-and-simplification@71",),
+        "1.21.5",
     ),
     (
         "entity-nbt@71",
@@ -166,24 +177,28 @@ _BUILTIN_PLUGIN_DEFS: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
         "迁移 summon 与 data merge entity 中的实体 NBT：装备槽位合并、fall_distance、"
         "睡眠坐标、item_frame/phantom/player 字段，以及 CustomName 等内嵌文本组件。",
         ("entity-nbt-equipment-and-fields@71",),
+        "1.21.5",
     ),
     (
         "structure-nbt@71",
         "结构文件实体迁移",
         "改写 data/<命名空间>/structure/*.nbt 中 entities[].nbt 的 1.21.5 字段，保持二进制 NBT 类型不丢失。",
         ("structure.entity-nbt@71",),
+        "1.21.5",
     ),
     (
         "command-slots@71",
         "马鞍槽位改名",
         "把 item 命令中的 horse.saddle 槽位改名为 saddle；不改写 data 命令中的 NBT 路径。",
         ("command.slot-horse-saddle-to-saddle@71",),
+        "1.21.5",
     ),
     (
         "strict-json@80",
         "严格 JSON 归一化",
         "面向 1.21.6 及以上目标时把所有 JSON 资源重写为标准严格 JSON；重复键始终拒绝。",
         ("json.strict-normalization@80",),
+        "1.21.6",
     ),
     (
         "identifiers@88",
@@ -191,12 +206,14 @@ _BUILTIN_PLUGIN_DEFS: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
         "把精确的 minecraft:chain 标识符改为 minecraft:iron_chain，"
         "仅处理 JSON 标量与完整命令 token，不改写对象 key 或子串。",
         ("identifier.chain-to-iron-chain@88",),
+        "1.21.9",
     ),
     (
         "spawn-rotation@88",
         "出生点旋转语法",
         "为 spawnpoint/setworldspawn 补充 yaw/pitch；降级时仅在 pitch 为零时无损。",
         ("command.spawn-rotation-pitch@88",),
+        "1.21.9",
     ),
     (
         "gamerules@94.1",
@@ -204,18 +221,21 @@ _BUILTIN_PLUGIN_DEFS: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
         "把 1.21.11 的 gamerule 迁移为 minecraft:snake_case，处理特殊改名与反义规则"
         "显式赋值的反转；被移除的火规则双向阻断。",
         ("command.gamerule-registry-names@94.1",),
+        "1.21.11",
     ),
     (
         "worldborder@94.1",
         "worldborder 时间单位",
         "换算秒/天/刻的时间单位，但真实时间与游戏刻的推进语义不等价，带时间命令默认按 unknown 阻断。",
         ("command.worldborder-tick-time@94.1",),
+        "1.21.11",
     ),
     (
         "loot@94.1",
         "filtered 战利品分支",
         "把 filtered 战利品函数的 modifier 改为 on_pass；存在 on_fail 时禁止降级。",
         ("loot.filtered-on-pass-on-fail@94.1",),
+        "1.21.11",
     ),
     (
         "clocks@101.1",
@@ -227,12 +247,14 @@ _BUILTIN_PLUGIN_DEFS: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
             "predicate.time-check-clock@101.1",
             "test-environment.time-of-day-to-clock-time@101.1",
         ),
+        "26.1",
     ),
     (
         "recipes@101.1",
         "26.1 配方子集",
         "转换可逆的 result 形式与默认字段；crafting_dye/imbue 等新配方类型阻断。",
         ("recipe.syntax-and-types@101.1",),
+        "26.1",
     ),
 )
 
@@ -241,9 +263,13 @@ def _builtin_plugins() -> tuple[PluginInfo, ...]:
     """Build the built-in plugin catalog and verify it covers every built-in rule."""
 
     from . import __version__
+    from .versions import PROFILES
 
+    registered = {profile.game_version for profile in PROFILES}
     infos: list[PluginInfo] = []
-    for plugin_id, name, description, rule_ids in _BUILTIN_PLUGIN_DEFS:
+    for plugin_id, name, description, rule_ids, target_version in _BUILTIN_PLUGIN_DEFS:
+        if target_version not in registered:
+            raise ValueError(f"Built-in plugin {plugin_id!r} targets unregistered version {target_version!r}")
         infos.append(
             PluginInfo(
                 id=plugin_id,
@@ -254,6 +280,7 @@ def _builtin_plugins() -> tuple[PluginInfo, ...]:
                 kind="builtin",
                 enabled=True,
                 rules=rule_ids,
+                target_version=target_version,
             )
         )
     covered = {rule_id for info in infos for rule_id in info.rules}
@@ -484,6 +511,7 @@ class PluginStore:
                 name=spec.id,
                 description=spec.description,
                 version="1.0.0",
+                target_version=_target_version_for_format(spec.boundary),
             )
             rule_ids = (_validated_rule_id(spec.id, meta.id),)
         return PluginInfo.from_meta(meta, origin="file", kind="declarative", rules=rule_ids, path=str(path))
@@ -493,6 +521,24 @@ def _validated_rule_id(value: Any, plugin_id: str) -> str:
     if not isinstance(value, str) or not _RULE_ID_RE.fullmatch(value):
         raise ValueError(f"Plugin {plugin_id!r} declares an invalid rule id: {value!r}")
     return value
+
+
+def _target_version_for_format(pack_format: PackFormat) -> str:
+    """Pick the latest registered release using ``pack_format`` for a bare rule spec.
+
+    Bare declarative specs carry no plugin metadata, so the target version is
+    derived from the boundary format; wrapped JSON plugins declare it explicitly.
+    """
+
+    from .versions import profiles_for_format
+
+    matches = profiles_for_format(pack_format)
+    if not matches:
+        raise ValueError(
+            f"No registered release uses data-pack format {pack_format}; "
+            "wrap the rule in a plugin object and declare target_version"
+        )
+    return matches[-1].game_version
 
 
 def _register_declarative_file(registry: RuleRegistry, path: Path, plugin_id: str) -> None:

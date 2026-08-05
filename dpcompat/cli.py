@@ -301,6 +301,7 @@ def _command_plugin_list(args: argparse.Namespace) -> int:
     table.add_column("Enabled", justify="center")
     table.add_column("Plugin", style="cyan")
     table.add_column("Name")
+    table.add_column("Target", justify="center")
     table.add_column("Rules", justify="right")
     table.add_column("Origin")
     table.add_column("Description", overflow="fold")
@@ -309,6 +310,7 @@ def _command_plugin_list(args: argparse.Namespace) -> int:
             "on" if item.enabled else "off",
             item.id,
             item.name,
+            item.target_version,
             str(len(item.rules)),
             item.origin,
             item.description,

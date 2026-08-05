@@ -44,6 +44,7 @@ class CliTests(unittest.TestCase):
                 '    "id": "cli.demo@80",\n'
                 '    "name": "CLI 演示",\n'
                 '    "description": "测试用插件。",\n'
+                '    "target_version": "1.21.6",\n'
                 '    "official_sources": ["https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-6"],\n'
                 "}\n"
                 "class DemoRule:\n"

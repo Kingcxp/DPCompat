@@ -30,6 +30,7 @@ PLUGIN = {
     "name": "演示 Python 插件",
     "description": "把 demo:old 重命名为 demo:new 的示例规则。",
     "version": "1.0.0",
+    "target_version": "1.21.9",
     "official_sources": ["https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-9"],
 }
 
@@ -56,6 +57,7 @@ _JSON_PLUGIN = {
         "name": "演示 JSON 插件",
         "description": "声明式重命名 demo:old -> demo:new。",
         "version": "1.0.0",
+        "target_version": "1.21.9",
     },
     "rules": [
         {
@@ -107,6 +109,7 @@ def test_scaffold_plugin_template_creates_a_working_project(tmp_path: Path) -> N
     assert (tmp_path / "demo.template" / "README.md").is_file()
     source = created.read_text(encoding="utf-8")
     assert '"id": "demo.template@88"' in source
+    assert '"target_version": "1.21.9"' in source
     assert "RULES = (ExampleRule(),)" in source
 
     # The scaffolded file must be installable as a real plugin.
@@ -200,6 +203,18 @@ def test_install_declarative_json_plugin(plugin_dir: Path, tmp_path: Path) -> No
     info = store.install(source)
     assert info.kind == "declarative"
     assert info.rules == ("demo.json-rename@88",)
+
+
+def test_bare_json_spec_derives_target_version_from_boundary(plugin_dir: Path, tmp_path: Path) -> None:
+    # A bare DeclarativeRuleSpec has no plugin wrapper, so the target version is
+    # derived from the boundary pack format (latest registered release).
+    spec = _JSON_PLUGIN["rules"][0]
+    source = tmp_path / "bare.json"
+    source.write_text(json.dumps(spec), encoding="utf-8")
+    store = PluginStore()
+    info = store.install(source)
+    assert info.id == spec["id"]
+    assert info.target_version == "1.21.10"  # format 88 -> latest release with format 88
 
 
 def test_disabled_builtin_plugin_drops_its_rules(plugin_dir: Path) -> None:
