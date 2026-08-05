@@ -20,6 +20,7 @@ from dpcompat.commands import (
 )
 from dpcompat.entity_data import downgrade_entity_nbt, upgrade_entity_nbt
 from dpcompat import nbt
+from dpcompat.fallback import apply_fallback_files, load_fallback, resolve_with_fallback
 from dpcompat.migrations.base import MigrationContext
 from dpcompat.migrations.commands import HorseSaddleSlotRule, SpawnRotationRule
 from dpcompat.migrations.entities import EntitySnbtRule
@@ -583,6 +584,85 @@ class RecipeRuleTests(unittest.TestCase):
             rule = TimeCheckClockRule()
             result = rule.apply(MigrationContext(root, PackFormat(101, 1), PackFormat(94, 1), BuildPolicy()))
             self.assertEqual({item.code for item in result.diagnostics}, {"time-check-custom-clock-cannot-downgrade"})
+
+
+class FallbackTests(unittest.TestCase):
+    def _fallback_dir(self, base: Path, *, manifest: str | None = None) -> Path:
+        fallback = base / "fallback"
+        fallback.mkdir(exist_ok=True)
+        if manifest is not None:
+            (fallback / ".dpcompat-fallback.toml").write_text(manifest, encoding="utf-8")
+        return fallback
+
+    def test_exact_deletion_and_overlay_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            spec = load_fallback(
+                self._fallback_dir(
+                    base,
+                    manifest='delete = ["data/demo/timeline/test.json"]\n',
+                )
+            )
+            write(spec.root, "data/demo/function/legacy.mcfunction", "say legacy fallback\n")
+            target = make_pack(base / "target")
+            write(target, "data/demo/timeline/test.json", '{}\n')
+            application = apply_fallback_files(spec, target)
+            self.assertFalse((target / "data/demo/timeline/test.json").exists())
+            self.assertEqual(
+                (target / "data/demo/function/legacy.mcfunction").read_text(encoding="utf-8"),
+                "say legacy fallback\n",
+            )
+            self.assertEqual(application.deleted_paths, 1)
+            self.assertEqual(application.changed_files, 1)
+
+    def test_diagnostic_resolution_requires_code_and_reason(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            spec = load_fallback(
+                self._fallback_dir(
+                    Path(temp_dir),
+                    manifest=(
+                        "[[resolve]]\n"
+                        'code = "timeline-custom-clock-cannot-downgrade"\n'
+                        'path = "data/demo/timeline/test.json"\n'
+                        'reason = "The old target intentionally omits the cosmetic custom timeline."\n'
+                    ),
+                )
+            )
+            from dpcompat.models import Compatibility, Diagnostic, Severity
+
+            diagnostics = [
+                Diagnostic(
+                    Severity.ERROR,
+                    "timeline-custom-clock-cannot-downgrade",
+                    "Custom clock",
+                    path="data/demo/timeline/test.json",
+                    compatibility=Compatibility.UNSUPPORTED,
+                )
+            ]
+            application = apply_fallback_files(spec, make_pack(Path(temp_dir) / "target"))
+            resolve_with_fallback(diagnostics, spec, application)
+            self.assertEqual(application.resolved_diagnostics, 1)
+            self.assertEqual(diagnostics[0].severity.value, 10)  # INFO
+            self.assertEqual(diagnostics[0].compatibility.value, "emulated")
+
+    def test_unused_resolution_is_visible(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            spec = load_fallback(
+                self._fallback_dir(
+                    Path(temp_dir),
+                    manifest=(
+                        "[[resolve]]\n"
+                        'code = "never-emitted-code"\n'
+                        'reason = "Reviewed for future use."\n'
+                    ),
+                )
+            )
+            application = apply_fallback_files(spec, make_pack(Path(temp_dir) / "target"))
+            resolve_with_fallback([], spec, application)
+            self.assertEqual(
+                {item.code for item in application.diagnostics},
+                {"fallback-resolution-unused"},
+            )
 
 
 if __name__ == "__main__":
