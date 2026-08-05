@@ -16,6 +16,11 @@ from dpcompat.commands import (
     macro_placeholders_are_quoted,
     parse_command_line,
 )
+from dpcompat.text_components import (
+    TextComponentMigrationError,
+    downgrade_component,
+    upgrade_component,
+)
 
 
 class CommandParserTests(unittest.TestCase):
@@ -53,6 +58,39 @@ class CommandParserTests(unittest.TestCase):
         self.assertTrue(is_zero_rotation("0"))
         self.assertTrue(is_zero_rotation("0.0f"))
         self.assertFalse(is_zero_rotation("30"))
+
+
+class TextComponentTests(unittest.TestCase):
+    def test_click_event_upgrade_maps_action_specific_value(self) -> None:
+        value = upgrade_component(
+            {"text": "x", "clickEvent": {"action": "run_command", "value": "/say hi"}}
+        )
+        self.assertEqual(
+            value,
+            {"text": "x", "click_event": {"action": "run_command", "command": "/say hi"}},
+        )
+
+    def test_click_event_downgrade_restores_legacy_value(self) -> None:
+        value = downgrade_component(
+            {"text": "x", "click_event": {"action": "run_command", "command": "/say hi"}}
+        )
+        self.assertEqual(
+            value,
+            {"text": "x", "clickEvent": {"action": "run_command", "value": "/say hi"}},
+        )
+
+    def test_hover_show_item_round_trip(self) -> None:
+        modern = {"hover_event": {"action": "show_item", "id": "minecraft:stick", "count": 2}}
+        legacy = downgrade_component(modern)
+        self.assertEqual(
+            legacy,
+            {"hoverEvent": {"action": "show_item", "contents": {"id": "minecraft:stick", "count": 2}}},
+        )
+        self.assertEqual(upgrade_component(legacy), modern)
+
+    def test_duplicate_event_forms_fail_closed(self) -> None:
+        with self.assertRaises(TextComponentMigrationError):
+            upgrade_component({"clickEvent": {"action": "run_command"}, "click_event": {"action": "open_url"}})  # type: ignore[call-overload]
 
 
 if __name__ == "__main__":
