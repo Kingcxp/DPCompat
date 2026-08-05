@@ -45,6 +45,33 @@ class ScannerTests(unittest.TestCase):
                 {"invalid-resource-path"},
             )
 
+    def test_object_valued_type_is_not_treated_as_text_component(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(
+                root,
+                "data/demo/advancement/hit.json",
+                '{"criteria":{"hit":{"trigger":"entity_hurt_player","conditions":'
+                '{"damage":{"type":{"tags":[{"expected":true,"id":"demo:mob_attack"}]}}}}}}\n',
+            )
+
+            scan = scan_pack(root)
+
+            self.assertFalse(any(item.code == "invalid-json" for item in scan.diagnostics))
+            self.assertEqual(scan.inferred_format, PackFormat(61))
+
+    def test_invalid_runtime_path_errors_but_readme_only_warns(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(root, "data/demo/tags/README.md", "Contributor notes\n")
+            write(root, "data/demo/function/BadName.mcfunction", "say invalid\n")
+
+            scan = scan_pack(root)
+
+            by_code = {item.code: item for item in scan.diagnostics}
+            self.assertEqual(by_code["non-runtime-file-invalid-path"].severity, Severity.WARNING)
+            self.assertEqual(by_code["invalid-resource-path"].severity, Severity.ERROR)
+
 
 if __name__ == "__main__":
     unittest.main()

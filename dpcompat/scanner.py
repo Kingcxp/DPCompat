@@ -26,6 +26,7 @@ from .models import (
 
 _NAMESPACE_RE = re.compile(r"^[a-z0-9_.-]+$")
 _RESOURCE_PATH_RE = re.compile(r"^[a-z0-9_./-]+$")
+_RUNTIME_RESOURCE_SUFFIXES = frozenset({".json", ".mcfunction", ".nbt"})
 
 # Resource directories that exist somewhere in the supported 1.21.4+ range. This is used for
 # typo detection only; feature minimums are loaded from the reviewable feature manifest.
@@ -305,7 +306,10 @@ def _scan_json_semantics(
         if not isinstance(node, dict):
             continue
         node_type = node.get("type")
-        if node_type in {"sprite", "minecraft:sprite"}:
+        # ``type`` is a common schema key and is not always a string. Damage predicates,
+        # for example, use an object-valued ``damage.type``. Only string text-component
+        # discriminators can identify the format-88 sprite component.
+        if isinstance(node_type, str) and node_type in {"sprite", "minecraft:sprite"}:
             minimum = PackFormat(88)
             inferred = _record_evidence(
                 evidence,
@@ -461,13 +465,19 @@ def scan_pack(root: Path, target: PackFormat | None = None) -> ScanResult:
                     )
                 )
             if not _RESOURCE_PATH_RE.fullmatch(resource_tail):
+                runtime_resource = path.suffix.lower() in _RUNTIME_RESOURCE_SUFFIXES
                 diagnostics.append(
                     Diagnostic(
-                        Severity.ERROR,
-                        "invalid-resource-path",
+                        Severity.ERROR if runtime_resource else Severity.WARNING,
+                        "invalid-resource-path" if runtime_resource else "non-runtime-file-invalid-path",
                         (
-                            "Runtime resource paths must use lowercase letters, digits, "
-                            "'_', '-', '.', and '/'"
+                            "Runtime resource paths must use lowercase letters, digits, '_', '-', '.', and '/'"
+                            if runtime_resource
+                            else (
+                                "A non-runtime file under data uses a path that is not a valid resource location; "
+                                "DPCompat does not parse this extension as a runtime resource, but moving "
+                                "documentation outside data avoids ambiguous loader behavior"
+                            )
                         ),
                         path=relative,
                     )
