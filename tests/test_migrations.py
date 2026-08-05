@@ -16,6 +16,7 @@ from dpcompat.commands import (
     macro_placeholders_are_quoted,
     parse_command_line,
 )
+from dpcompat.entity_data import downgrade_entity_nbt, upgrade_entity_nbt
 from dpcompat.text_components import (
     TextComponentMigrationError,
     downgrade_component,
@@ -91,6 +92,58 @@ class TextComponentTests(unittest.TestCase):
     def test_duplicate_event_forms_fail_closed(self) -> None:
         with self.assertRaises(TextComponentMigrationError):
             upgrade_component({"clickEvent": {"action": "run_command"}, "click_event": {"action": "open_url"}})  # type: ignore[call-overload]
+
+
+class EntityDataTests(unittest.TestCase):
+    def test_equipment_upgrade_merges_legacy_lists(self) -> None:
+        result = upgrade_entity_nbt(
+            "minecraft:zombie",
+            {
+                "FallDistance": 1.0,
+                "ArmorItems": [{}, {}, {}, {"id": "minecraft:diamond_helmet", "count": 1}],
+                "HandItems": [{"id": "minecraft:stick", "count": 1}, {}],
+            },
+        )
+        self.assertIn("fall_distance", result.value)
+        self.assertNotIn("ArmorItems", result.value)
+        equipment = result.value["equipment"]
+        self.assertEqual(equipment["head"], {"id": "minecraft:diamond_helmet", "count": 1})
+        self.assertEqual(equipment["mainhand"], {"id": "minecraft:stick", "count": 1})
+        self.assertEqual(result.changed, 3)
+
+    def test_equipment_downgrade_reconstructs_lists_and_flags_pig_saddle_loss(self) -> None:
+        result = downgrade_entity_nbt(
+            "minecraft:pig",
+            {
+                "equipment": {
+                    "head": {"id": "minecraft:carved_pumpkin", "count": 1},
+                    "saddle": {"id": "minecraft:saddle", "count": 1},
+                }
+            },
+        )
+        self.assertEqual(result.value["ArmorItems"][3], {"id": "minecraft:carved_pumpkin", "count": 1})
+        self.assertEqual(result.value["Saddle"], True)
+        self.assertTrue(any("Saddle item components are lost" in warning for warning in result.warnings))
+
+    def test_item_frame_position_upgrade(self) -> None:
+        result = upgrade_entity_nbt(
+            "minecraft:item_frame",
+            {"TileX": 1, "TileY": 2, "TileZ": 3},
+        )
+        self.assertIn("block_pos", result.value)
+        self.assertNotIn("TileX", result.value)
+
+    def test_player_respawn_upgrade(self) -> None:
+        result = upgrade_entity_nbt(
+            "minecraft:player",
+            {"SpawnX": 1, "SpawnY": 2, "SpawnZ": 3, "SpawnForced": True},
+        )
+        self.assertEqual(result.value["respawn"]["forced"], True)
+
+    def test_unknown_entity_id_is_ignored_not_guessed(self) -> None:
+        result = upgrade_entity_nbt("minecraft:custom_thing", {"TileX": 1})
+        self.assertEqual(result.value, {"TileX": 1})
+        self.assertEqual(result.changed, 0)
 
 
 if __name__ == "__main__":
