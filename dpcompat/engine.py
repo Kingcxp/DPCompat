@@ -19,7 +19,7 @@ from typing import Any
 from .detector import detect_pack
 from .fallback import apply_fallback_files, load_fallback, resolve_with_fallback
 from .jsonutil import dump_path
-from .metadata import render_single_target_metadata
+from .metadata import render_single_target_metadata, render_universal_metadata
 from .migrations import BUILTIN_RULES, MigrationContext, MigrationRule
 from .models import (
     BuildPolicy,
@@ -27,6 +27,7 @@ from .models import (
     Diagnostic,
     MigrationRecord,
     PackFormat,
+    PackFormatRange,
     Severity,
     TargetBuildResult,
     VersionProfile,
@@ -38,6 +39,7 @@ from .packio import (
     tree_sha256,
 )
 from .scanner import scan_pack
+from .versions import unique_format_profiles
 
 _NAME_RE = re.compile(r"[^a-zA-Z0-9._-]+")
 logger = logging.getLogger(__name__)
@@ -183,10 +185,99 @@ def build_target(
     return TargetBuildResult(profile, target_dir, archive, diagnostics, migrations, archive_hash)
 
 
+def _write_universal_guard(universal_root: Path) -> None:
+    function = universal_root / "data/dpcompat/function/unsupported_format.mcfunction"
+    function.parent.mkdir(parents=True, exist_ok=True)
+    function.write_text(
+        'tellraw @a [{"text":"[DPCompat] "},'
+        '{"text":"This data-pack format was not built or tested. Use a listed stable target.",'
+        '"color":"red"}]\n'
+        "data modify storage dpcompat:status unsupported_format set value 1b\n",
+        encoding="utf-8",
+    )
+    load_tag = universal_root / "data/minecraft/tags/function/load.json"
+    load_tag.parent.mkdir(parents=True, exist_ok=True)
+    dump_path(load_tag, {"replace": True, "values": ["dpcompat:unsupported_format"]})
+
+
+def _ensure_overlay_load_override(overlay_root: Path) -> None:
+    load_tag = overlay_root / "data/minecraft/tags/function/load.json"
+    if not load_tag.exists():
+        load_tag.parent.mkdir(parents=True, exist_ok=True)
+        dump_path(load_tag, {"replace": True, "values": []})
+
+
+def build_universal(
+    effective_source: Path,
+    original_metadata: dict[str, Any],
+    description: Any,
+    results: list[TargetBuildResult],
+    work_root: Path,
+    output_root: Path,
+    *,
+    output_name: str,
+    emit_archive: bool,
+) -> Path | None:
+    """Package successful unique-format targets as complete overlay data trees."""
+
+    successful = [result for result in results if result.successful and result.directory]
+    profiles = unique_format_profiles([result.profile for result in successful])
+    if len(profiles) < 2:
+        return None
+
+    result_by_format = {result.profile.pack_format: result for result in successful if result.directory is not None}
+    universal_root = work_root / "universal"
+    universal_root.mkdir(parents=True)
+
+    for child in effective_source.iterdir():
+        if child.name in {"pack.mcmeta", "data"}:
+            continue
+        destination = universal_root / child.name
+        if child.is_dir():
+            shutil.copytree(child, destination)
+        else:
+            shutil.copy2(child, destination)
+    _write_universal_guard(universal_root)
+
+    ranges: list[tuple[PackFormatRange, str]] = []
+    for profile in profiles:
+        result = result_by_format[profile.pack_format]
+        directory_name = f"fmt_{profile.pack_format.major}_{profile.pack_format.minor}"
+        overlay_root = universal_root / directory_name
+        overlay_root.mkdir(parents=True)
+        source_data = result.directory / "data"  # type: ignore[operator]
+        if source_data.is_dir():
+            shutil.copytree(source_data, overlay_root / "data")
+        else:
+            (overlay_root / "data").mkdir()
+        _ensure_overlay_load_override(overlay_root)
+        ranges.append((PackFormatRange(profile.pack_format, profile.pack_format), directory_name))
+
+    universal_description: dict[str, Any] = {
+        "text": "DPCompat universal pack — stable releases 1.21.4+",
+        "color": "gold",
+    }
+    if isinstance(description, str) and description:
+        universal_description["extra"] = [{"text": f" | {description}", "color": "gray"}]
+
+    metadata = render_universal_metadata(
+        original_metadata,
+        ranges,
+        universal_description,
+    )
+    dump_path(universal_root / "pack.mcmeta", metadata)
+    if not emit_archive:
+        return None
+    archive = output_root / f"{_safe_name(output_name)}-universal-1.21.4-plus.zip"
+    create_deterministic_zip(universal_root, archive)
+    return archive
+
+
 def compile_pack(
     source_root: Path,
     profiles: list[VersionProfile],
     output_root: Path,
+    universal: bool = True,
     *,
     policy: BuildPolicy | None = None,
     source_format: PackFormat | None = None,
@@ -263,6 +354,20 @@ def compile_pack(
             )
             for profile in profiles
         ]
+        universal_archive = (
+            build_universal(
+                effective_source,
+                detection.metadata,
+                detection.description,
+                results,
+                work_root,
+                output_root,
+                output_name=output_name,
+                emit_archive=emit_archives,
+            )
+            if universal
+            else None
+        )
         for result in results:
             result.directory = None
-    return detection, results, None
+    return detection, results, universal_archive

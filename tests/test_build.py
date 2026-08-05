@@ -65,6 +65,7 @@ class EngineBuildTests(unittest.TestCase):
                 root,
                 [resolve_profile("1.21.4"), resolve_profile("1.21.9")],
                 output,
+                universal=False,
             )
             self.assertEqual(str(detection.source_format), "61")
             self.assertTrue(all(result.successful for result in results))
@@ -109,6 +110,42 @@ class EngineBuildTests(unittest.TestCase):
             )
             self.assertEqual(detection.source_format, PackFormat(71))
             self.assertTrue(any(item.code == "source-format-overridden" for item in detection.diagnostics))
+
+    def test_universal_guard_and_complete_overlay_layers(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            root = make_pack(base / "pack")
+            write(root, "data/demo/function/load.mcfunction", "say loaded\n")
+            output = base / "out"
+            _, results, universal = compile_pack(
+                root,
+                [resolve_profile("1.21.4"), resolve_profile("1.21.9")],
+                output,
+                universal=True,
+            )
+            self.assertTrue(all(result.successful for result in results))
+            self.assertIsNotNone(universal)
+            assert universal is not None
+            with zipfile.ZipFile(universal) as archive:
+                names = set(archive.namelist())
+                self.assertIn("data/dpcompat/function/unsupported_format.mcfunction", names)
+                self.assertIn("fmt_61_0/data/minecraft/tags/function/load.json", names)
+                self.assertIn("fmt_88_0/data/demo/function/load.mcfunction", names)
+                metadata = json.loads(archive.read("pack.mcmeta"))
+            self.assertEqual(len(metadata["overlays"]["entries"]), 2)
+
+    def test_single_format_build_has_no_universal_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(root, "data/demo/function/load.mcfunction", "say loaded\n")
+            _, results, universal = compile_pack(
+                root,
+                [resolve_profile("1.21.9"), resolve_profile("1.21.10")],
+                Path(temp_dir) / "out",
+                universal=True,
+            )
+            self.assertTrue(all(result.successful for result in results))
+            self.assertIsNone(universal)
 
 
 if __name__ == "__main__":
