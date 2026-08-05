@@ -10,3 +10,11 @@ dist/
 .cache/
 logs/
 .coverage
+.test_datapack/
+
+__MACOSX/
+.DS_Store
+
+.vs/
+.vscode/
+.idea/
