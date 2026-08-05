@@ -1,0 +1,109 @@
+{
+  "schema": 1,
+  "features": [
+    {
+      "id": "gametest_resources",
+      "min_format": [
+        71,
+        0
+      ],
+      "resource_types": [
+        "test_environment",
+        "test_instance"
+      ],
+      "downgrade": "unsupported",
+      "source": "https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-5"
+    },
+    {
+      "id": "dialog_resources",
+      "min_format": [
+        80,
+        0
+      ],
+      "resource_types": [
+        "dialog"
+      ],
+      "commands": [
+        "dialog",
+        "waypoint",
+        "version",
+        "datapack create"
+      ],
+      "downgrade": "unsupported",
+      "source": "https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-6"
+    },
+    {
+      "id": "copper_age_resources",
+      "min_format": [
+        88,
+        0
+      ],
+      "commands": [
+        "fetchprofile"
+      ],
+      "identifiers": [
+        "minecraft:iron_chain"
+      ],
+      "downgrade": "conditional",
+      "source": "https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-9"
+    },
+    {
+      "id": "mounts_of_mayhem_resources",
+      "min_format": [
+        94,
+        1
+      ],
+      "resource_types": [
+        "timeline",
+        "zombie_nautilus_variant"
+      ],
+      "commands": [
+        "stopwatch"
+      ],
+      "downgrade": "unsupported",
+      "source": "https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-11",
+      "identifiers": [
+        "minecraft:discard"
+      ]
+    },
+    {
+      "id": "tiny_takeover_resources",
+      "min_format": [
+        101,
+        1
+      ],
+      "resource_types": [
+        "world_clock",
+        "villager_trade",
+        "trade_set",
+        "cat_sound_variant",
+        "pig_sound_variant",
+        "cow_sound_variant",
+        "chicken_sound_variant"
+      ],
+      "commands": [
+        "swing"
+      ],
+      "downgrade": "unsupported",
+      "source": "https://www.minecraft.net/en-us/article/minecraft-java-edition-26-1",
+      "identifiers": [
+        "minecraft:crafting_dye",
+        "minecraft:crafting_imbue",
+        "minecraft:sum",
+        "minecraft:environment_attribute"
+      ]
+    },
+    {
+      "id": "chaos_cubed_resources",
+      "min_format": [
+        107,
+        1
+      ],
+      "resource_types": [
+        "sulfur_cube_archetype"
+      ],
+      "downgrade": "unsupported",
+      "source": "https://www.minecraft.net/en-us/article/minecraft-java-edition-26-2"
+    }
+  ]
+}
