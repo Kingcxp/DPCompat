@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib
+import importlib.util
 import logging
 import re
 from collections.abc import Iterable
 from importlib.metadata import entry_points
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ..migrations.base import MigrationRule
 from ..models import PackFormat
@@ -74,7 +76,9 @@ class RuleRegistry:
         if callable(value) and not hasattr(value, "apply"):
             value = value()
         if hasattr(value, "apply") and hasattr(value, "applies"):
-            return (value,)
+            # The provider is duck-typed; the hasattr checks above are the runtime
+            # protocol test that static checkers cannot narrow through.
+            return (cast(MigrationRule, value),)
         if isinstance(value, Iterable) and not isinstance(value, str | bytes | dict):
             rules = tuple(value)
             if all(hasattr(rule, "apply") and hasattr(rule, "applies") for rule in rules):
@@ -89,6 +93,40 @@ class RuleRegistry:
         if value is None:
             raise ValueError(f"Rule module {module_name!r} must expose dpcompat_rules() or RULES")
         self.register_many(self._rules_from_object(value, origin=module_name), origin=module_name)
+
+    def load_module_file(
+        self,
+        path: Path,
+        *,
+        origin: str | None = None,
+        default_sources: tuple[str, ...] = (),
+    ) -> None:
+        """Load a Python rule module directly from a file path (plugin files).
+
+        ``default_sources`` are attached to rules that do not declare their own
+        ``official_sources``, so plugin files can centralize provenance.
+        """
+
+        path = path.expanduser().resolve()
+        module_name = "dpcompat_plugin_" + hashlib.sha1(str(path).encode("utf-8")).hexdigest()[:12]
+        spec = importlib.util.spec_from_file_location(module_name, path)
+        if spec is None or spec.loader is None:
+            raise ValueError(f"Cannot load rule module: {path}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        value = getattr(module, "dpcompat_rules", None)
+        if value is None:
+            value = getattr(module, "RULES", None)
+        if value is None:
+            raise ValueError(f"Rule module {path} must expose dpcompat_rules() or RULES")
+        resolved_origin = origin or f"file:{path}"
+        for rule in self._rules_from_object(value, origin=resolved_origin):
+            # The provider is duck-typed; inject plugin-level sources when the rule
+            # does not declare its own so provenance stays mandatory.
+            rule_any = cast(Any, rule)
+            if not getattr(rule_any, "official_sources", ()) and default_sources:
+                rule_any.official_sources = default_sources
+            self.register(rule, origin=resolved_origin)
 
     def load_entry_points(self) -> None:
         for point in entry_points(group=ENTRY_POINT_GROUP):
@@ -115,14 +153,21 @@ def create_rule_registry(
     modules: Iterable[str] = (),
     files: Iterable[Path] = (),
     load_entry_points: bool = True,
+    enabled_rule_ids: frozenset[str] | None = None,
 ) -> RuleRegistry:
-    """Build the effective registry from built-ins and opt-in extensions."""
+    """Build the effective registry from built-ins and opt-in extensions.
+
+    ``enabled_rule_ids`` restricts built-in rules to the given set; it is how the
+    plugin store implements per-plugin enable/disable while preserving order.
+    """
 
     from ..migrations import BUILTIN_RULES
     from ..migrations.sources import BUILTIN_RULE_SOURCES
 
     registry = RuleRegistry()
     for priority, rule in enumerate(BUILTIN_RULES, start=100):
+        if enabled_rule_ids is not None and rule.id not in enabled_rule_ids:
+            continue
         try:
             sources = BUILTIN_RULE_SOURCES[rule.id]
         except KeyError as exc:

@@ -1,6 +1,6 @@
 [project]
 name = "dpcompat"
-version = "0.3.1"
+version = "0.4.0"
 description = "A conservative Minecraft Java data-pack compatibility compiler for stable 1.21.4+ releases"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -60,6 +60,9 @@ src = ["dpcompat", "tests", "scripts"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+# Plugins and CLI tables render Chinese metadata; full-width punctuation is
+# intentional there and in user-facing diagnostics.
+allowed-confusables = ["：", "，", "；", "（", "）", "。"]
 
 [tool.ruff.format]
 quote-style = "double"

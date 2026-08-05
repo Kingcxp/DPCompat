@@ -23,8 +23,9 @@ from .engine import compile_pack
 from .logging_config import setup_logging
 from .models import BuildPolicy, Diagnostic, PackFormat, Severity, VersionProfile
 from .packio import materialize_source
+from .plugins import PluginStore, create_effective_registry
 from .report import build_report, write_report
-from .rules import RuleRegistry, create_rule_registry
+from .rules import RuleRegistry
 from .servercheck import check_with_server
 from .versions import PROFILES, resolve_profile
 
@@ -197,11 +198,7 @@ def _load_effective_config(args: argparse.Namespace) -> ProjectConfig:
 
 
 def _registry(config: ProjectConfig) -> RuleRegistry:
-    return create_rule_registry(
-        modules=config.rules.modules,
-        files=config.rules.files,
-        load_entry_points=config.rules.load_entry_points,
-    )
+    return create_effective_registry(config)
 
 
 def _profiles(args: argparse.Namespace, config: ProjectConfig) -> list[VersionProfile]:
@@ -292,6 +289,60 @@ def _command_validate(args: argparse.Namespace) -> int:
 
 def _command_build(args: argparse.Namespace) -> int:
     return _compile(args, emit_archives=True)[0]
+
+
+def _command_plugin_list(args: argparse.Namespace) -> int:
+    store = PluginStore()
+    infos = store.list_plugins()
+    if args.json:
+        console.print_json(_json([item.model_dump(mode="json") for item in infos]))
+        return 0
+    table = Table(title="Migration rule plugins", header_style="bold magenta")
+    table.add_column("Enabled", justify="center")
+    table.add_column("Plugin", style="cyan")
+    table.add_column("Name")
+    table.add_column("Rules", justify="right")
+    table.add_column("Origin")
+    table.add_column("Description", overflow="fold")
+    for item in infos:
+        table.add_row(
+            "on" if item.enabled else "off",
+            item.id,
+            item.name,
+            str(len(item.rules)),
+            item.origin,
+            item.description,
+        )
+    console.print(table)
+    return 0
+
+
+def _command_plugin_install(args: argparse.Namespace) -> int:
+    store = PluginStore()
+    info = store.install(args.path, force=args.force)
+    console.print(f"Installed plugin [bold cyan]{info.name}[/bold cyan] ({info.id})")
+    return 0
+
+
+def _command_plugin_remove(args: argparse.Namespace) -> int:
+    store = PluginStore()
+    store.uninstall(args.plugin_id)
+    console.print(f"Removed plugin [bold cyan]{args.plugin_id}[/bold cyan]")
+    return 0
+
+
+def _command_plugin_enable(args: argparse.Namespace) -> int:
+    store = PluginStore()
+    store.set_enabled(args.plugin_id, True)
+    console.print(f"Enabled plugin [bold cyan]{args.plugin_id}[/bold cyan]")
+    return 0
+
+
+def _command_plugin_disable(args: argparse.Namespace) -> int:
+    store = PluginStore()
+    store.set_enabled(args.plugin_id, False)
+    console.print(f"Disabled plugin [bold cyan]{args.plugin_id}[/bold cyan]")
+    return 0
 
 
 def _command_server_check(args: argparse.Namespace) -> int:
@@ -402,6 +453,30 @@ def build_parser() -> argparse.ArgumentParser:
     server_parser.add_argument("--keep", type=Path, help="Keep the temporary server directory")
     server_parser.add_argument("--accept-eula", action="store_true")
     server_parser.set_defaults(handler=_command_server_check)
+
+    plugin_parser = subparsers.add_parser("plugin", help="Manage migration rule plugins")
+    plugin_subparsers = plugin_parser.add_subparsers(dest="plugin_action", required=True)
+
+    plugin_list = plugin_subparsers.add_parser("list", help="List built-in and installed plugins")
+    plugin_list.add_argument("--json", action="store_true")
+    plugin_list.set_defaults(handler=_command_plugin_list)
+
+    plugin_install = plugin_subparsers.add_parser("install", help="Install a .py or .json plugin file")
+    plugin_install.add_argument("path", type=Path)
+    plugin_install.add_argument("--force", action="store_true", help="Replace an already installed plugin")
+    plugin_install.set_defaults(handler=_command_plugin_install)
+
+    plugin_remove = plugin_subparsers.add_parser("remove", help="Uninstall an installed plugin")
+    plugin_remove.add_argument("plugin_id")
+    plugin_remove.set_defaults(handler=_command_plugin_remove)
+
+    plugin_enable = plugin_subparsers.add_parser("enable", help="Enable a built-in or installed plugin")
+    plugin_enable.add_argument("plugin_id")
+    plugin_enable.set_defaults(handler=_command_plugin_enable)
+
+    plugin_disable = plugin_subparsers.add_parser("disable", help="Disable a built-in or installed plugin")
+    plugin_disable.add_argument("plugin_id")
+    plugin_disable.set_defaults(handler=_command_plugin_disable)
     return parser
 
 
