@@ -24,6 +24,7 @@ from dpcompat.migrations.base import MigrationContext
 from dpcompat.migrations.commands import HorseSaddleSlotRule, SpawnRotationRule
 from dpcompat.migrations.entities import EntitySnbtRule
 from dpcompat.migrations.identifiers import ChainRenameRule
+from dpcompat.migrations.recipes import Recipe26Rule, TimeCheckClockRule
 from dpcompat.migrations.resources import FilteredLootRule, TestEnvironmentClockRule, TimelineClockRule
 from dpcompat.migrations.items import ItemTooltipComponentsRule
 from dpcompat.migrations.structures import StructureEntityNbtRule
@@ -523,6 +524,65 @@ class WorldClockRuleTests(unittest.TestCase):
             value = (root / "data/demo/test_environment/test.json").read_text(encoding="utf-8")
             self.assertIn("clock_time", value)
             self.assertNotIn("time_of_day", value)
+
+
+class RecipeRuleTests(unittest.TestCase):
+    def test_cooking_result_object_downgrades_when_count_is_one(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [101, 1])
+            write(
+                root,
+                "data/demo/recipe/test.json",
+                '{"type":"minecraft:smelting","ingredient":"minecraft:stone",'
+                '"result":{"id":"minecraft:stone","count":1},"experience":0,"cookingtime":200}\n',
+            )
+            rule = Recipe26Rule()
+            rule.apply(MigrationContext(root, PackFormat(101, 1), PackFormat(94, 1), BuildPolicy()))
+            value = (root / "data/demo/recipe/test.json").read_text(encoding="utf-8")
+            self.assertIn('"result": "minecraft:stone"', value)
+
+    def test_show_notification_true_is_removed_on_downgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [101, 1])
+            write(
+                root,
+                "data/demo/recipe/test.json",
+                '{"type":"minecraft:smelting","ingredient":"minecraft:stone","result":"minecraft:stone",'
+                '"show_notification":true}\n',
+            )
+            rule = Recipe26Rule()
+            rule.apply(MigrationContext(root, PackFormat(101, 1), PackFormat(94, 1), BuildPolicy()))
+            value = (root / "data/demo/recipe/test.json").read_text(encoding="utf-8")
+            self.assertNotIn("show_notification", value)
+
+    def test_new_recipe_types_cannot_downgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [101, 1])
+            write(root, "data/demo/recipe/test.json", '{"type":"minecraft:crafting_dye","ingredients":[]}\n')
+            rule = Recipe26Rule()
+            result = rule.apply(MigrationContext(root, PackFormat(101, 1), PackFormat(94, 1), BuildPolicy()))
+            self.assertEqual({item.code for item in result.diagnostics}, {"new-recipe-type-cannot-downgrade"})
+
+    def test_time_check_clock_default_is_inserted(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(root, "data/demo/predicate/test.json", '{"condition":"minecraft:time_check","value":1000}\n')
+            rule = TimeCheckClockRule()
+            rule.apply(MigrationContext(root, PackFormat(94, 1), PackFormat(101, 1), BuildPolicy()))
+            value = (root / "data/demo/predicate/test.json").read_text(encoding="utf-8")
+            self.assertIn('"clock": "minecraft:overworld"', value)
+
+    def test_custom_time_check_clock_cannot_downgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [101, 1])
+            write(
+                root,
+                "data/demo/predicate/test.json",
+                '{"condition":"minecraft:time_check","value":1000,"clock":"demo:clock"}\n',
+            )
+            rule = TimeCheckClockRule()
+            result = rule.apply(MigrationContext(root, PackFormat(101, 1), PackFormat(94, 1), BuildPolicy()))
+            self.assertEqual({item.code for item in result.diagnostics}, {"time-check-custom-clock-cannot-downgrade"})
 
 
 if __name__ == "__main__":
