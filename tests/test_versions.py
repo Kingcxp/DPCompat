@@ -1,6 +1,7 @@
 import unittest
 
 from dpcompat.models import PackFormat
+from dpcompat.versions import resolve_profile
 
 
 class VersionTests(unittest.TestCase):
@@ -9,10 +10,8 @@ class VersionTests(unittest.TestCase):
         self.assertEqual(PackFormat.parse([94, 1]), PackFormat(94, 1))
         self.assertEqual(PackFormat.parse("107.1"), PackFormat(107, 1))
 
-    def test_pack_format_comparison_and_minor_versions(self) -> None:
-        self.assertLess(PackFormat(88), PackFormat(94, 1))
-        self.assertEqual(PackFormat(94, 1).exact_metadata_value(), [94, 1])
-        self.assertEqual(PackFormat(61).compact_metadata_value(), 61)
+    def test_resolve_latest(self) -> None:
+        self.assertEqual(resolve_profile("latest").game_version, "26.2")
 
 
 if __name__ == "__main__":

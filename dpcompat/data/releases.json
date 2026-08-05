@@ -1,0 +1,96 @@
+{
+  "schema": 1,
+  "updated": "2026-07-20",
+  "releases": [
+    {
+      "game_version": "1.21.4",
+      "pack_format": [61, 0],
+      "release_date": "2024-12-03",
+      "java_major": 21,
+      "note": "The Garden Awakens",
+      "capabilities": ["custom_model_data_v2"],
+      "official_url": "https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-4"
+    },
+    {
+      "game_version": "1.21.5",
+      "pack_format": [71, 0],
+      "release_date": "2025-03-25",
+      "java_major": 21,
+      "note": "Spring to Life",
+      "capabilities": ["gametest", "snbt_text_components", "entity_components", "tooltip_display", "strict_block_placement"],
+      "official_url": "https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-5"
+    },
+    {
+      "game_version": "1.21.6",
+      "pack_format": [80, 0],
+      "release_date": "2025-06-17",
+      "java_major": 21,
+      "note": "Chase the Skies",
+      "capabilities": ["strict_json", "dialog", "waypoint", "custom_click_event"],
+      "official_url": "https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-6"
+    },
+    {
+      "game_version": "1.21.7",
+      "pack_format": [81, 0],
+      "release_date": "2025-06-30",
+      "java_major": 21,
+      "note": "Content and hotfix release",
+      "capabilities": ["strict_json", "dialog", "waypoint", "custom_click_event"],
+      "official_url": "https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-7"
+    },
+    {
+      "game_version": "1.21.8",
+      "pack_format": [81, 0],
+      "release_date": "2025-07-17",
+      "java_major": 21,
+      "note": "Hotfix; same data-pack format as 1.21.7",
+      "capabilities": ["strict_json", "dialog", "waypoint", "custom_click_event"],
+      "official_url": "https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-8"
+    },
+    {
+      "game_version": "1.21.9",
+      "pack_format": [88, 0],
+      "release_date": "2025-09-30",
+      "java_major": 21,
+      "note": "The Copper Age",
+      "capabilities": ["pack_minor_versions", "iron_chain", "sprite_text", "fetchprofile", "spawn_rotation"],
+      "official_url": "https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-9"
+    },
+    {
+      "game_version": "1.21.10",
+      "pack_format": [88, 0],
+      "release_date": "2025-10-07",
+      "java_major": 21,
+      "note": "Hotfix; same data-pack format as 1.21.9",
+      "capabilities": ["pack_minor_versions", "iron_chain", "sprite_text", "fetchprofile", "spawn_rotation"],
+      "official_url": "https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-10"
+    },
+    {
+      "game_version": "1.21.11",
+      "pack_format": [94, 1],
+      "release_date": "2025-12-09",
+      "java_major": 21,
+      "note": "Mounts of Mayhem",
+      "capabilities": ["stopwatch", "timeline", "environment_attributes", "filtered_on_fail", "discard_loot_function"],
+      "official_url": "https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-11"
+    },
+    {
+      "game_version": "26.1",
+      "pack_format": [101, 1],
+      "release_date": "2026-03-24",
+      "java_major": 25,
+      "note": "Tiny Takeover",
+      "capabilities": ["world_clock", "villager_trade", "trade_set", "animal_sound_variants", "recipe_result_v2"],
+      "official_url": "https://www.minecraft.net/en-us/article/minecraft-java-edition-26-1"
+    },
+    {
+      "game_version": "26.2",
+      "pack_format": [107, 1],
+      "release_date": "2026-06-16",
+      "java_major": 25,
+      "note": "Chaos Cubed",
+      "capabilities": ["sulfur_cube_archetype"],
+      "official_url": "https://www.minecraft.net/en-us/article/minecraft-java-edition-26-2"
+    }
+  ]
+}
