@@ -20,6 +20,7 @@ classifiers = [
 dependencies = [
   "pydantic>=2.11,<3",
   "rich>=14,<16",
+  "textual>=2.1,<4",
 ]
 
 [project.scripts]

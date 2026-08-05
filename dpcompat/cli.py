@@ -345,6 +345,13 @@ def _command_plugin_disable(args: argparse.Namespace) -> int:
     return 0
 
 
+def _command_tui(args: argparse.Namespace) -> int:
+    from .ui import DpCompatApp
+
+    DpCompatApp(config_path=args.config).run()
+    return 0
+
+
 def _command_server_check(args: argparse.Namespace) -> int:
     result = check_with_server(
         args.pack,
@@ -477,6 +484,10 @@ def build_parser() -> argparse.ArgumentParser:
     plugin_disable = plugin_subparsers.add_parser("disable", help="Disable a built-in or installed plugin")
     plugin_disable.add_argument("plugin_id")
     plugin_disable.set_defaults(handler=_command_plugin_disable)
+
+    tui_parser = subparsers.add_parser("tui", help="Open the interactive Textual interface")
+    tui_parser.add_argument("--config", "-c", type=Path, help="Optional dpcompat.toml")
+    tui_parser.set_defaults(handler=_command_tui)
     return parser
 
 
