@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.2] - 2026-08-05
+
+### Added
+
+- Plugins must declare the Minecraft release they migrate towards (`target_version` in `PLUGIN` metadata / the JSON plugin wrapper); the TUI plugin manager is now a collapsible version list (one section per version, showing the pack format and enabled/total plugin counts), so new releases and the plugins written for them appear in both the target checkboxes and the plugin list automatically. Bare declarative JSON specs derive `target_version` from their boundary pack format.
+- TUI: every migration-policy checkbox gained an inline description (模拟/有损/未知/警告即失败) and the build log has a placeholder line before the first build.
+- CLI: `dpcompat plugin list` shows the target version of each plugin.
+
+### Fixed
+
+- TUI: target/policy columns no longer stretch to fill the scroll area, which previously left a large blank gap between the checkboxes and the buttons; checkboxes render one row tall in the form.
+- TUI: button rows use margin spacing instead of squeezing the buttons to two rows, so button labels are vertically centered again.
+- TUI: `scroll_visible` is used to reach the build button in tests instead of scrolling the whole form to the end.
+
 ## [0.4.1] - 2026-08-05
 
 ### Added
