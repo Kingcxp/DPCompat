@@ -20,6 +20,7 @@ from dpcompat.commands import (
 )
 from dpcompat.entity_data import downgrade_entity_nbt, upgrade_entity_nbt
 from dpcompat.migrations.base import MigrationContext
+from dpcompat.migrations.items import ItemTooltipComponentsRule
 from dpcompat.migrations.text import TextComponentRule
 from dpcompat.models import BuildPolicy, PackFormat, Severity
 from dpcompat.text_components import (
@@ -198,6 +199,41 @@ class TextComponentRuleTests(unittest.TestCase):
                 {"macro-component-needs-runtime-parse"},
             )
             self.assertTrue(all(item.severity == Severity.ERROR for item in diagnostics))
+
+
+class ItemTooltipRuleTests(unittest.TestCase):
+    def test_local_show_in_tooltip_is_consolidated(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(
+                root,
+                "data/demo/loot_table/test.json",
+                '{"pools":[],"components":'
+                '{"minecraft:dyed_color":{"rgb":123,"show_in_tooltip":false}}}\n',
+            )
+            rule = ItemTooltipComponentsRule()
+            rule.apply(MigrationContext(root, PackFormat(61), PackFormat(71), BuildPolicy()))
+            value = (root / "data/demo/loot_table/test.json").read_text(encoding="utf-8")
+            self.assertIn("tooltip_display", value)
+            self.assertIn("hidden_components", value)
+            self.assertNotIn("show_in_tooltip", value)
+
+    def test_downgrade_restores_local_flags_when_possible(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), 71)
+            write(
+                root,
+                "data/demo/loot_table/test.json",
+                '{"pools":[],"components":'
+                '{"minecraft:tooltip_display":{"hide_tooltip":true,"hidden_components":["minecraft:dyed_color"]},'
+                '"minecraft:dyed_color":{"rgb":123}}}\n',
+            )
+            rule = ItemTooltipComponentsRule()
+            rule.apply(MigrationContext(root, PackFormat(71), PackFormat(61), BuildPolicy()))
+            value = (root / "data/demo/loot_table/test.json").read_text(encoding="utf-8")
+            self.assertIn("minecraft:hide_tooltip", value)
+            self.assertIn("show_in_tooltip", value)
+            self.assertNotIn("tooltip_display", value)
 
 
 if __name__ == "__main__":
