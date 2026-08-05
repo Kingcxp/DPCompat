@@ -13,6 +13,10 @@ import tempfile
 import zipfile
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
+
+from .metadata import overlay_matches
+from .models import PackFormat
 
 IGNORED_NAMES = {
     ".git",
@@ -98,3 +102,71 @@ def copy_pack(source: Path, destination: Path) -> None:
     if destination.exists():
         shutil.rmtree(destination)
     shutil.copytree(source, destination, ignore=_ignore)
+
+
+def merge_tree(source: Path, destination: Path) -> None:
+    """Merge source onto destination, replacing files and preserving unrelated paths."""
+    if not source.exists():
+        return
+    destination.mkdir(parents=True, exist_ok=True)
+    for path in sorted(source.rglob("*")):
+        relative = path.relative_to(source)
+        target = destination / relative
+        if path.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+        elif path.is_file():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, target)
+
+
+def overlay_directories(metadata: dict[str, Any]) -> set[str]:
+    """Return every directory reserved by source overlay declarations."""
+
+    overlays = metadata.get("overlays")
+    if not isinstance(overlays, dict):
+        return set()
+    entries = overlays.get("entries")
+    if not isinstance(entries, list):
+        return set()
+    return {
+        entry["directory"] for entry in entries if isinstance(entry, dict) and isinstance(entry.get("directory"), str)
+    }
+
+
+def flatten_pack(
+    source: Path,
+    destination: Path,
+    source_format: PackFormat,
+    metadata: dict[str, Any],
+) -> list[str]:
+    """Materialize the effective pack for one source format, including source overlays."""
+    if destination.exists():
+        shutil.rmtree(destination)
+    destination.mkdir(parents=True)
+    overlay_dirs = overlay_directories(metadata)
+    ignored = IGNORED_NAMES | overlay_dirs
+    for child in source.iterdir():
+        if child.name in ignored:
+            continue
+        target = destination / child.name
+        if child.is_dir():
+            shutil.copytree(child, target, ignore=_ignore)
+        elif child.is_file():
+            shutil.copy2(child, target)
+
+    applied: list[str] = []
+    overlays = metadata.get("overlays")
+    entries = overlays.get("entries") if isinstance(overlays, dict) else None
+    if isinstance(entries, list):
+        for entry in entries:
+            if not isinstance(entry, dict) or not overlay_matches(entry, source_format):
+                continue
+            directory = entry.get("directory")
+            if not isinstance(directory, str):
+                continue
+            overlay_root = source / directory
+            if not overlay_root.is_dir():
+                raise ValueError(f"Overlay directory declared but missing: {directory}")
+            merge_tree(overlay_root, destination)
+            applied.append(directory)
+    return applied

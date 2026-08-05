@@ -1,14 +1,53 @@
+import json
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
 
-from dpcompat.packio import materialize_source
+from dpcompat.models import PackFormat
+from dpcompat.packio import flatten_pack, materialize_source
 
-from helpers import make_pack
+from helpers import make_pack, write
 
 
 class PackIoTests(unittest.TestCase):
+    def test_source_overlay_is_flattened(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            root = make_pack(base / "pack")
+            metadata = {
+                "pack": {"pack_format": 61, "description": "x"},
+                "overlays": {"entries": [{"directory": "fmt71", "formats": 71}]},
+            }
+            (root / "pack.mcmeta").write_text(json.dumps(metadata), encoding="utf-8")
+            write(root, "data/demo/function/test.mcfunction", "say base\n")
+            write(root, "fmt71/data/demo/function/test.mcfunction", "say overlay\n")
+            destination = base / "flat"
+            applied = flatten_pack(root, destination, PackFormat(71), metadata)
+            self.assertEqual(applied, ["fmt71"])
+            self.assertEqual(
+                (destination / "data/demo/function/test.mcfunction").read_text(),
+                "say overlay\n",
+            )
+
+    def test_non_matching_overlay_never_enters_effective_source(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            root = make_pack(base / "pack")
+            metadata = {
+                "pack": {"pack_format": 61, "description": "x"},
+                "overlays": {"entries": [{"directory": "fmt71", "formats": 71}]},
+            }
+            write(root, "data/demo/function/test.mcfunction", "say base\n")
+            write(root, "fmt71/data/demo/function/test.mcfunction", "say overlay\n")
+            destination = base / "flat"
+            applied = flatten_pack(root, destination, PackFormat(61), metadata)
+            self.assertEqual(applied, [])
+            self.assertEqual(
+                (destination / "data/demo/function/test.mcfunction").read_text(),
+                "say base\n",
+            )
+
     def test_zip_path_traversal_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             archive_path = Path(temp_dir) / "bad.zip"
