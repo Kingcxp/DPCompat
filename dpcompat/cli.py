@@ -25,6 +25,7 @@ from .models import BuildPolicy, Diagnostic, PackFormat, Severity, VersionProfil
 from .packio import materialize_source
 from .report import build_report, write_report
 from .rules import RuleRegistry, create_rule_registry
+from .servercheck import check_with_server
 from .versions import PROFILES, resolve_profile
 
 console = Console()
@@ -291,6 +292,27 @@ def _command_build(args: argparse.Namespace) -> int:
     return _compile(args, emit_archives=True)[0]
 
 
+def _command_server_check(args: argparse.Namespace) -> int:
+    result = check_with_server(
+        args.pack,
+        args.server_jar,
+        java=args.java,
+        timeout=args.timeout,
+        keep_directory=args.keep,
+        accept_eula=args.accept_eula,
+    )
+    console.print("[bold green]PASS[/bold green]" if result.success else "[bold red]FAIL[/bold red]")
+    if result.returncode is not None:
+        console.print(f"Server exit code: {result.returncode}")
+    if result.matched_errors:
+        _print_diagnostics([Diagnostic(Severity.ERROR, "server-load-error", line) for line in result.matched_errors])
+    if not result.success and result.output_tail:
+        console.print(Panel("\n".join(result.output_tail), title="Server output tail"))
+    if result.log_path:
+        console.print(f"Log: [cyan]{result.log_path}[/cyan]")
+    return 0 if result.success else 2
+
+
 def _add_policy_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--config", "-c", type=Path, help="Optional dpcompat.toml")
     parser.add_argument("--source-format", help="Override detected source format after review")
@@ -364,6 +386,18 @@ def build_parser() -> argparse.ArgumentParser:
     build_parser_.add_argument("--no-universal", action="store_true")
     _add_target_options(build_parser_)
     build_parser_.set_defaults(handler=_command_build)
+
+    server_parser = subparsers.add_parser(
+        "server-check",
+        help="Boot a local vanilla server JAR and inspect data-pack load logs",
+    )
+    server_parser.add_argument("pack", type=Path)
+    server_parser.add_argument("--server-jar", type=Path, required=True)
+    server_parser.add_argument("--java", default="java")
+    server_parser.add_argument("--timeout", type=float, default=120.0)
+    server_parser.add_argument("--keep", type=Path, help="Keep the temporary server directory")
+    server_parser.add_argument("--accept-eula", action="store_true")
+    server_parser.set_defaults(handler=_command_server_check)
     return parser
 
 
