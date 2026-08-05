@@ -1,10 +1,13 @@
 import json
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 from dpcompat.detector import detect_pack
+from dpcompat.engine import compile_pack
 from dpcompat.models import PackFormat
+from dpcompat.versions import resolve_profile
 
 from helpers import make_pack, write
 
@@ -43,6 +46,69 @@ class DetectorTests(unittest.TestCase):
             (root / "pack.mcmeta").write_text(json.dumps(metadata), encoding="utf-8")
             result = detect_pack(root)
             self.assertTrue(any(item.code == "metadata-source-outside-range" for item in result.diagnostics))
+
+
+class EngineBuildTests(unittest.TestCase):
+    def test_build_chain_rename_through_the_transaction(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            root = make_pack(base / "pack")
+            write(root, "data/demo/function/load.mcfunction", "give @s minecraft:chain\n")
+            write(
+                root,
+                "data/demo/recipe/chain_copy.json",
+                '{"type":"minecraft:crafting_shapeless","ingredients":["minecraft:chain"],'
+                '"result":{"id":"minecraft:chain","count":1}}\n',
+            )
+            output = base / "out"
+            detection, results, universal = compile_pack(
+                root,
+                [resolve_profile("1.21.4"), resolve_profile("1.21.9")],
+                output,
+            )
+            self.assertEqual(str(detection.source_format), "61")
+            self.assertTrue(all(result.successful for result in results))
+            self.assertIsNone(universal)
+            modern = results[1].archive
+            assert modern is not None
+            with zipfile.ZipFile(modern) as archive:
+                text = archive.read("data/demo/function/load.mcfunction").decode()
+                recipe = json.loads(archive.read("data/demo/recipe/chain_copy.json"))
+            self.assertIn("minecraft:iron_chain", text)
+            self.assertEqual(recipe["result"]["id"], "minecraft:iron_chain")
+
+    def test_failed_target_never_publishes_an_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            root = make_pack(base / "pack")
+            write(
+                root,
+                "data/demo/timeline/test.json",
+                '{"clock":"demo:clock","tracks":{}}\n',
+            )
+            output = base / "out"
+            _, results, _ = compile_pack(
+                root,
+                [resolve_profile("1.21.11")],
+                output,
+                source_format=PackFormat(101, 1),
+            )
+            self.assertFalse(results[0].successful)
+            self.assertIsNone(results[0].archive)
+            self.assertEqual(list(output.glob("*.zip")), [])
+
+    def test_explicit_source_format_is_recorded_as_override(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            detection, results, _ = compile_pack(
+                root,
+                [resolve_profile("1.21.4")],
+                Path(temp_dir) / "out",
+                source_format=PackFormat(71),
+                emit_archives=False,
+            )
+            self.assertEqual(detection.source_format, PackFormat(71))
+            self.assertTrue(any(item.code == "source-format-overridden" for item in detection.diagnostics))
 
 
 if __name__ == "__main__":
