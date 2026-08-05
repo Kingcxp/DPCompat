@@ -13,7 +13,7 @@ from dpcompat.migrations import BUILTIN_RULES
 from dpcompat.migrations.base import MigrationContext
 from dpcompat.migrations.sources import BUILTIN_RULE_SOURCES
 from dpcompat.models import BuildPolicy, PackFormat
-from dpcompat.rules import load_declarative_rule
+from dpcompat.rules import RuleRegistry, create_rule_registry, load_declarative_rule
 from dpcompat.rules.schema import DeclarativeRuleSpec
 
 import pytest
@@ -106,3 +106,42 @@ def test_declarative_key_conflict_fails_without_overwriting(tmp_path: Path) -> N
 
     assert {item.code for item in result.diagnostics} == {"declarative-key-conflict"}
     assert json.loads(recipe.read_text(encoding="utf-8")) == {"legacy": 1, "modern": 2}
+
+
+def test_project_module_rules_are_discovered_and_duplicate_ids_are_rejected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = tmp_path / "example_rules.py"
+    module.write_text(
+        "from dpcompat.migrations.strict_json import StrictJsonRule\n"
+        "rule = StrictJsonRule()\n"
+        "rule.official_sources = "
+        "('https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-6',)\n"
+        "RULES = (rule,)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+    registry = RuleRegistry()
+    registry.load_module("example_rules")
+    assert registry.info()[0].id == "json.strict-normalization@80"
+    with pytest.raises(ValueError, match="Duplicate rule id"):
+        registry.load_module("example_rules")
+
+
+def test_registry_rejects_rules_without_primary_sources() -> None:
+    from dpcompat.migrations.strict_json import StrictJsonRule
+
+    registry = RuleRegistry()
+    with pytest.raises(ValueError, match="at least one primary source"):
+        registry.register(StrictJsonRule(), origin="unsourced")
+
+
+def test_builtin_registry_orders_rules_and_is_duplicate_free() -> None:
+    registry = create_rule_registry(load_entry_points=False)
+    info = registry.info()
+    assert info
+    priorities = [item.priority for item in info]
+    assert priorities == sorted(priorities)
+    assert len({item.id for item in info}) == len(info)
+    assert all(item.official_sources for item in info)
