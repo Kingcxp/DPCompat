@@ -1,0 +1,61 @@
+name: Wiki
+
+# Syncs the GitHub Wiki with the repository documentation.  Runs whenever
+# the docs change on main, can be triggered manually, and is called by the
+# release workflow so every release also refreshes the wiki.
+#
+# Pushing to the wiki requires a personal access token (PAT) with `repo`
+# scope because the wiki is a separate repository and the automatic
+# GITHUB_TOKEN has no access to it.  Store the PAT as the WIKI_TOKEN
+# repository secret; without it the push step is skipped.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "README.md"
+      - "CHANGELOG.md"
+      - "docs/**"
+      - "scripts/sync_wiki.py"
+      - ".github/workflows/wiki.yml"
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Generate the wiki pages
+        run: uv run python scripts/sync_wiki.py --output "$RUNNER_TEMP/wiki-staging"
+
+      - name: Push to the wiki repository
+        if: ${{ secrets.WIKI_TOKEN != '' }}
+        env:
+          WIKI_TOKEN: ${{ secrets.WIKI_TOKEN }}
+        run: |
+          set -euo pipefail
+          clone="$RUNNER_TEMP/wiki-repo"
+          git clone "https://x-access-token:${WIKI_TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" "$clone"
+          find "$clone" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+          cp -a "$RUNNER_TEMP/wiki-staging"/. "$clone"/
+          git -C "$clone" config user.name "github-actions[bot]"
+          git -C "$clone" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$clone" add -A
+          if git -C "$clone" diff --cached --quiet; then
+            echo "Wiki is already up to date"
+          else
+            git -C "$clone" commit -m "docs: sync wiki pages from main docs"
+            git -C "$clone" push origin HEAD:master
+          fi
+
+      - name: Warn when the wiki token is missing
+        if: ${{ secrets.WIKI_TOKEN == '' }}
+        run: |
+          echo "::warning::WIKI_TOKEN is not configured; the wiki sync step was skipped. \
+          Create a personal access token with repo scope and add it as a repository secret."

@@ -1,0 +1,64 @@
+name: Release
+
+# Publish DPCompat on a version tag (v*):
+#   1. build the sdist + wheel,
+#   2. create a GitHub Release with the artifacts,
+#   3. publish the package to PyPI (skipped until PYPI_TOKEN is configured),
+#   4. refresh the GitHub Wiki (skipped until WIKI_TOKEN is configured).
+#
+# Secrets:
+#   - PYPI_TOKEN: an API token created on PyPI (pypi.org/manage/account/token).
+#     If you prefer trusted publishing (OIDC), remove the `if` on the PyPI
+#     step and configure the PyPI project to trust this repository instead.
+#   - WIKI_TOKEN: a personal access token with `repo` scope used to push the
+#     wiki repository.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write # enables trusted publishing to PyPI when configured
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Build the distribution
+        run: uv build
+
+      - name: Upload the build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Create the GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+
+      - name: Publish to PyPI
+        if: ${{ secrets.PYPI_TOKEN != '' }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_TOKEN }}
+          skip-existing: true # tolerate re-runs of an already published tag
+
+      - name: Warn when the PyPI token is missing
+        if: ${{ secrets.PYPI_TOKEN == '' }}
+        run: |
+          echo "::warning::PYPI_TOKEN is not configured; the PyPI publish step was skipped. \
+          Create an API token on PyPI and add it as a repository secret."
+
+  wiki:
+    needs: release
+    uses: ./.github/workflows/wiki.yml
