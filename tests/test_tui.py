@@ -204,6 +204,7 @@ def test_tui_template_screen_scaffolds_a_project(
 
 
 def test_scaffold_helper_round_trip(tmp_path: Path) -> None:
-    created = scaffold_plugin_template("demo.template", tmp_path, subfolder=True)
-    assert created.parent == tmp_path / "demo.template"
+    root = tmp_path.resolve()  # canonical form; see test_config notes for the 8.3-name quirk
+    created = scaffold_plugin_template("demo.template", root, subfolder=True)
+    assert created.parent == root / "demo.template"
     assert created.is_file()

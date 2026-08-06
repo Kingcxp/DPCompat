@@ -104,10 +104,13 @@ def test_default_plugin_dir_is_scoped_to_the_installation() -> None:
 
 
 def test_scaffold_plugin_template_creates_a_working_project(tmp_path: Path) -> None:
-    created = scaffold_plugin_template("demo.template", tmp_path, subfolder=True)
-    assert created == tmp_path / "demo.template" / "demo.template.py"
+    # Resolve the base so both sides of the comparisons below use the canonical
+    # long path form; on Windows CI the temp dir may use the 8.3 short name.
+    root = tmp_path.resolve()
+    created = scaffold_plugin_template("demo.template", root, subfolder=True)
+    assert created == root / "demo.template" / "demo.template.py"
     assert created.is_file()
-    assert (tmp_path / "demo.template" / "README.md").is_file()
+    assert (root / "demo.template" / "README.md").is_file()
     source = created.read_text(encoding="utf-8")
     assert '"id": "demo.template@88"' in source
     assert '"target_version": "1.21.9"' in source

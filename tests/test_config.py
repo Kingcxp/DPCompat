@@ -8,7 +8,10 @@ from dpcompat.config import load_config
 class ConfigTests(unittest.TestCase):
     def test_policy_and_relative_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
+            # Resolve the base so the comparison is canonical: on Windows CI the
+            # temp dir may use the 8.3 short name (e.g. RUNNER~1) while
+            # load_config resolves fallbacks to the long form (runneradmin).
+            root = Path(temp_dir).resolve()
             config = root / "dpcompat.toml"
             config.write_text(
                 '[build]\ntargets=["1.21.4"]\noutput_name="demo"\n'
