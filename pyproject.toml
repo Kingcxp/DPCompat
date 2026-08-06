@@ -1,6 +1,6 @@
 [project]
 name = "dpcompat"
-version = "0.4.3"
+version = "0.4.4"
 description = "A conservative Minecraft Java data-pack compatibility compiler for stable 1.21.4+ releases"
 readme = "README.md"
 requires-python = ">=3.12"

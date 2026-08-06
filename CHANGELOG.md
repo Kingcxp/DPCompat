@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.4] - 2026-08-05
+
+### Fixed
+
+- Windows CI: tests that compare resolved paths against temporary directories now canonicalize the temp base with `resolve()`. GitHub Actions Windows runners expose `TEMP` through the 8.3 short name (`RUNNER~1`), while `load_config` and `scaffold_plugin_template` resolve paths to the long form (`runneradmin`), which made the path equality assertions fail.
+
 ## [0.4.3] - 2026-08-05
 
 ### Added
