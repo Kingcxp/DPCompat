@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.5] - 2026-08-06
+
+### Fixed
+
+- CLI: stdio streams that cannot encode Unicode (e.g. English-Windows pipes using cp1252) are reconfigured to UTF-8 at startup, so plugin names, descriptions, and diagnostics in Chinese no longer crash with `UnicodeEncodeError`. Real Windows console streams already use UTF-8 and are left untouched; piped/file output is now always UTF-8, matching Python's UTF-8 mode.
+- Tests: the CLI subprocess tests decode output as UTF-8 explicitly instead of relying on the locale codepage.
+
 ## [0.4.4] - 2026-08-05
 
 ### Fixed
