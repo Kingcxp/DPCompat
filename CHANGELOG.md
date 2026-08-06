@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.6] - 2026-08-06
+
+### Added
+
+- Automated release pipeline: pushing a `v*` tag now builds the sdist/wheel, creates a GitHub Release with the artifacts, publishes to PyPI (when the `PYPI_TOKEN` secret is configured), and refreshes the GitHub Wiki (when `WIKI_TOKEN` is configured).
+- Wiki sync: `scripts/sync_wiki.py` generates wiki pages (Home + key developer docs + sidebar) from the repository documentation; the wiki workflow keeps them in sync on documentation changes and after every release. Local preview via `make wiki` / `build.ps1 wiki`.
+- README documents installing the published package with `pip` / `pipx`, including the per-environment plugin directory behavior.
+
 ## [0.4.5] - 2026-08-06
 
 ### Fixed
