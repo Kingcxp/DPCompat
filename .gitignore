@@ -12,6 +12,8 @@ logs/
 .coverage
 .test_datapack/
 test_datapack/
+# Local staging output of scripts/sync_wiki.py (make wiki).
+.wiki/
 # Installed plugins live next to the package; never track or ship them.
 dpcompat/plugins/
 

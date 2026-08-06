@@ -13,6 +13,7 @@
         .\scripts\build.ps1 check       # lint + typecheck + test
         .\scripts\build.ps1 smoke       # CLI smoke over examples/simple_pack
         .\scripts\build.ps1 build       # check + uv build
+        .\scripts\build.ps1 wiki        # generate the wiki staging pages in .wiki/
         .\scripts\build.ps1 clean       # remove known generated artifacts
 
     Cleanup is intentionally delegated to scripts/clean.py so PowerShell and the
@@ -22,7 +23,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet("help", "sync", "format", "lint", "typecheck", "test", "test-verbose", "coverage", "check", "build", "smoke", "clean")]
+    [ValidateSet("help", "sync", "format", "lint", "typecheck", "test", "test-verbose", "coverage", "check", "build", "smoke", "wiki", "clean")]
     [string]$Target = "help",
 
     [string]$Uv = "uv"
@@ -80,6 +81,9 @@ switch ($Target) {
     "smoke" {
         Invoke-Uv @("run", "dpcompat", "versions")
         Invoke-Uv @("run", "dpcompat", "inspect", "examples/simple_pack")
+    }
+    "wiki" {
+        Invoke-Uv @("run", "python", "scripts/sync_wiki.py", "--output", ".wiki")
     }
     "clean" {
         Invoke-Uv @("run", "python", "scripts/clean.py")

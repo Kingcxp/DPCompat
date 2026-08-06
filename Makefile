@@ -2,7 +2,7 @@ UV ?= uv
 UV_CACHE_DIR ?= .cache/uv
 export UV_CACHE_DIR
 
-.PHONY: help sync format lint typecheck test test-verbose coverage check build smoke clean
+.PHONY: help sync format lint typecheck test test-verbose coverage check build smoke wiki clean
 
 help:
 	@$(UV) run dpcompat --help
@@ -39,6 +39,9 @@ build: check
 smoke:
 	$(UV) run dpcompat versions
 	$(UV) run dpcompat inspect examples/simple_pack
+
+wiki:
+	$(UV) run python scripts/sync_wiki.py --output .wiki
 
 clean:
 	$(UV) run python scripts/clean.py

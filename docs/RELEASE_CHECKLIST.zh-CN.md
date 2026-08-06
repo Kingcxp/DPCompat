@@ -1,5 +1,30 @@
 # 发布检查清单
 
+## 自动化发布（tag 触发）
+
+CI 会在推送 `v*` 标签时自动执行发布流程（`.github/workflows/release.yml`）：
+
+1. `uv build` 构建 sdist 与 wheel；
+2. 创建 GitHub Release 并附上构建产物（自动生成 release notes）；
+3. 发布到 PyPI（配置了 `PYPI_TOKEN` secret 时；也可改用 trusted publishing）；
+4. 同步 GitHub Wiki（配置了 `WIKI_TOKEN` secret 时；Wiki 是独立仓库，需要 `repo` 权限的 PAT）。
+
+发布命令：
+
+```bash
+git tag v0.4.6
+GIT_EDITOR=true git push origin v0.4.6
+```
+
+Wiki 也会在 main 分支的文档变更（`docs/**`、`README.md`、`CHANGELOG.md`）时自动同步（`.github/workflows/wiki.yml`）；本地预览用 `make wiki`（Windows：`powershell -ExecutionPolicy Bypass -File scripts/build.ps1 wiki`）。
+
+首次发布前需要配置仓库 secrets：
+
+- `PYPI_TOKEN`：PyPI 账号下创建的 API token（https://pypi.org/manage/account/token/）；
+- `WIKI_TOKEN`：拥有 `repo` 权限的 personal access token。
+
+未配置的步骤会被跳过并在 CI 日志中警告，其余发布步骤不受影响。
+
 ## 代码、模型和来源
 
 - [ ] release/feature 只包含已核验正式版并附 Mojang URL；

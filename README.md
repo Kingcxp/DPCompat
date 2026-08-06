@@ -32,6 +32,31 @@ Minecraft 的变化同时涉及 JSON、命令、文本组件、物品组件、�
 
 ## 安装与快速开始
 
+### 通过 pip / pipx 安装
+
+发布到 PyPI 后，可以直接用 pip 或 pipx 安装（需要 Python 3.12+）：
+
+```bash
+pip install dpcompat          # 装入当前 Python 环境
+pipx install dpcompat         # 隔离为独立命令，推荐日常使用
+```
+
+安装后 `dpcompat` 命令直接可用：
+
+```bash
+dpcompat versions
+dpcompat inspect examples/simple_pack
+```
+
+```bash
+dpcompat tui                   # 交互式 TUI（勾选目标版本、管理插件、启动迁移）
+dpcompat plugin list           # 查看迁移插件
+```
+
+插件目录位于 dpcompat 包旁边（`site-packages/dpcompat/plugins`），所以每个安装环境（venv、pipx、`pip --user`）的插件彼此独立、互不影响；需要时可用环境变量 `DPCOMPAT_PLUGIN_DIR` 覆盖。发布到 PyPI 由 CI 在打 `v*` 标签时自动完成（见 [`docs/RELEASE_CHECKLIST.zh-CN.md`](docs/RELEASE_CHECKLIST.zh-CN.md)）。
+
+### 从源码开发（推荐 uv）
+
 要求 Python 3.12+ 与 [uv](https://docs.astral.sh/uv/)。
 
 ```bash
