@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import logging
 import shutil
+import sys
 import tempfile
-from contextlib import nullcontext
+from contextlib import nullcontext, suppress
 from pathlib import Path
 from typing import Any
 
@@ -512,9 +514,30 @@ def run_application(argv: list[str] | None = None) -> int:
         return 130
 
 
+def _ensure_utf8_stdio() -> None:
+    """Reconfigure non-UTF-8 stdio streams so Unicode output never crashes.
+
+    Windows pipes and files inherit the ANSI codepage (e.g. cp1252 on English
+    systems), which cannot encode plugin names or diagnostics in Chinese; real
+    Windows console streams already use UTF-8 and are left untouched.  The CLI
+    therefore writes UTF-8 everywhere, matching Python's UTF-8 mode, so piped
+    and file output is predictable on every locale.
+    """
+
+    for stream in (sys.stdout, sys.stderr):
+        if not isinstance(stream, io.TextIOWrapper):
+            continue
+        encoding = stream.encoding
+        if encoding is None or encoding.lower().replace("-", "") == "utf8":
+            continue
+        with suppress(ValueError, OSError):  # Unusual stream types must not break the CLI.
+            stream.reconfigure(encoding="utf-8")
+
+
 def main(argv: list[str] | None = None) -> None:
     """Configure queued Rich logging, run the CLI, and release file handlers."""
 
+    _ensure_utf8_stdio()
     preview = build_parser().parse_args(argv)
     if getattr(preview, "json", False):
         console_level = logging.CRITICAL

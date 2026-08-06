@@ -28,6 +28,7 @@ class CliTests(unittest.TestCase):
                 check=False,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
         self.assertEqual(process.returncode, 0, process.stderr)
         parsed = json.loads(process.stdout)
@@ -66,6 +67,7 @@ class CliTests(unittest.TestCase):
                     check=False,
                     capture_output=True,
                     text=True,
+                    encoding="utf-8",
                     env=env,
                 )
 
@@ -91,6 +93,7 @@ class CliTests(unittest.TestCase):
                 check=False,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 env=env,
             )
             self.assertEqual(rules.returncode, 0, rules.stderr)
@@ -104,6 +107,7 @@ class CliTests(unittest.TestCase):
                 check=False,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 env=env,
             )
             self.assertIn("cli.demo-rule@80", [item["id"] for item in json.loads(rules.stdout)])
