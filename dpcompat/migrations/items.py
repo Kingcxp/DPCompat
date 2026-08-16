@@ -28,9 +28,12 @@ def _is_component_map(value: dict[str, Any]) -> bool:
     return bool(value) and sum(1 for key in value if ":" in key) >= max(1, len(value) // 2)
 
 
-def _upgrade_map(value: dict[str, Any]) -> tuple[dict[str, Any], int]:
+def _upgrade_map(
+    context: MigrationContext, value: dict[str, Any], path: Path, rule_id: str
+) -> tuple[dict[str, Any], int, list[Diagnostic]]:
     result = dict(value)
     changed = 0
+    diagnostics: list[Diagnostic] = []
     tooltip = result.get("minecraft:tooltip_display")
     tooltip_result = dict(tooltip) if isinstance(tooltip, dict) else {}
     hidden = tooltip_result.get("hidden_components")
@@ -40,6 +43,25 @@ def _upgrade_map(value: dict[str, Any]) -> tuple[dict[str, Any], int]:
         result.pop("minecraft:hide_tooltip")
         tooltip_result["hide_tooltip"] = True
         changed += 1
+
+    if "minecraft:hide_additional_tooltip" in result:
+        # hide_additional_tooltip was removed in 1.21.5.  Its replacement lists every
+        # tooltip-contributing component in tooltip_display.hidden_components, which
+        # depends on the co-present components and cannot be inferred safely.
+        diagnostics.append(
+            policy_diagnostic(
+                context,
+                compatibility=Compatibility.UNKNOWN,
+                code="hide-additional-tooltip-cannot-upgrade",
+                message=(
+                    "minecraft:hide_additional_tooltip was removed in 1.21.5; list the affected "
+                    "components explicitly in tooltip_display.hidden_components instead"
+                ),
+                path=context.relative(path),
+                line=None,
+                rule_id=rule_id,
+            )
+        )
 
     for component_id, inner_key in _SIMPLIFIED_COMPONENTS.items():
         component = result.get(component_id)
@@ -74,7 +96,7 @@ def _upgrade_map(value: dict[str, Any]) -> tuple[dict[str, Any], int]:
     if tooltip_result and result.get("minecraft:tooltip_display") != tooltip_result:
         result["minecraft:tooltip_display"] = tooltip_result
         changed += 1
-    return result, changed
+    return result, changed, diagnostics
 
 
 def _downgrade_map(
@@ -171,8 +193,9 @@ class ItemTooltipComponentsRule:
                 result = {key: walk(item, key) for key, item in node.items()}
                 if parent_key == "components" or _is_component_map(result):
                     if upgrading:
-                        result, count = _upgrade_map(result)
+                        result, count, local = _upgrade_map(context, result, path, self.id)
                         changed += count
+                        diagnostics.extend(local)
                     else:
                         result, count, local = _downgrade_map(context, result, path, self.id)
                         changed += count

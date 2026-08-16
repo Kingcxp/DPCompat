@@ -170,7 +170,7 @@ def upgrade_entity_nbt(entity_id: str, value: dict[str, Any]) -> EntityTransform
             data["drop_chances"] = drop_chances
 
     if (
-        entity_id in {"minecraft:item_frame", "minecraft:glow_item_frame"}
+        entity_id in {"minecraft:item_frame", "minecraft:glow_item_frame", "minecraft:painting", "minecraft:leash_knot"}
         and all(key in data for key in ("TileX", "TileY", "TileZ"))
         and "block_pos" not in data
     ):
@@ -275,7 +275,12 @@ def downgrade_entity_nbt(entity_id: str, value: dict[str, Any]) -> EntityTransfo
             data["drop_chances"] = drop_chances
         changed += 1
 
-    if entity_id in {"minecraft:item_frame", "minecraft:glow_item_frame"}:
+    if entity_id in {
+        "minecraft:item_frame",
+        "minecraft:glow_item_frame",
+        "minecraft:painting",
+        "minecraft:leash_knot",
+    }:
         block_pos = data.pop("block_pos", None)
         if isinstance(block_pos, snbt.SnbtArray) and len(block_pos.values) == 3:
             data["TileX"], data["TileY"], data["TileZ"] = block_pos.values

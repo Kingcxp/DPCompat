@@ -127,6 +127,22 @@ class Recipe26Rule:
                                 rule_id=self.id,
                             )
                         )
+                    else:
+                        diagnostics.append(
+                            policy_diagnostic(
+                                context,
+                                compatibility=Compatibility.UNKNOWN,
+                                code="cooking-result-fields-cannot-downgrade",
+                                message=(
+                                    "Cooking result objects with fields beyond id/count cannot be "
+                                    "represented before 26.1"
+                                ),
+                                path=context.relative(path),
+                                line=None,
+                                rule_id=self.id,
+                                details={"fields": sorted(set(recipe_result) - {"id", "count"})},
+                            )
+                        )
                 if recipe_type == "minecraft:crafting_transmute":
                     material_count = result.get("material_count")
                     add_count = result.get("add_material_count_to_result")

@@ -406,6 +406,36 @@ def _scan_json_semantics(
         if diagnostic:
             diagnostics.append(diagnostic)
 
+    if (
+        "/dimension_type/" in resource_path
+        and isinstance(value, dict)
+        and any(key in value for key in ("default_clock", "has_ender_dragon_fight"))
+    ):
+        minimum = PackFormat(101, 1)
+        inferred = _record_evidence(
+            evidence,
+            inferred,
+            kind="dimension-type-field",
+            value="default_clock",
+            minimum=minimum,
+            weight=1.0,
+            path=relative,
+        )
+        diagnostic = _feature_diagnostic(
+            code="dimension-type-field-too-new",
+            message=(
+                "Dimension-type default_clock and has_ender_dragon_fight require format 101.1 "
+                "and have no older equivalent"
+            ),
+            minimum=minimum,
+            target=target,
+            path=relative,
+            feature_id="world-clock-dimension-fields@101.1",
+            source_url="https://www.minecraft.net/en-us/article/minecraft-java-edition-26-1",
+        )
+        if diagnostic:
+            diagnostics.append(diagnostic)
+
     return inferred
 
 

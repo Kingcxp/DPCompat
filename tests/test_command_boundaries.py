@@ -112,6 +112,34 @@ def test_worldborder_downgrade_reverts_whole_seconds() -> None:
         assert "worldborder set 100 10" in text
 
 
+def test_worldborder_warning_time_uses_the_same_unit_boundary() -> None:
+    # 1.21.11 moved `worldborder warning time` from real seconds to game ticks too;
+    # leaving the bare number would silently change 60 seconds into 60 ticks.
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = make_pack(Path(temp_dir) / "pack", [88, 0])
+        write(root, "data/demo/function/test.mcfunction", "worldborder warning time 60\n")
+        diagnostics = _run_worldborder(root, 88, 94.1, policy=BuildPolicy(allow_unknown=True))
+        text = (root / "data/demo/function/test.mcfunction").read_text(encoding="utf-8")
+        assert "worldborder warning time 60s" in text
+        assert {item.code for item in diagnostics} == {"worldborder-time-semantics-changed"}
+
+        downgraded = make_pack(Path(temp_dir) / "downgrade", [94, 1])
+        write(downgraded, "data/demo/function/test.mcfunction", "worldborder warning time 60s\n")
+        _run_worldborder(downgraded, 94.1, 88, policy=BuildPolicy(allow_unknown=True))
+        text = (downgraded / "data/demo/function/test.mcfunction").read_text(encoding="utf-8")
+        assert "worldborder warning time 60" in text
+
+
+def test_worldborder_day_suffix_converts_on_downgrade() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = make_pack(Path(temp_dir) / "pack", [94, 1])
+        write(root, "data/demo/function/test.mcfunction", "worldborder warning time 1d\n")
+        _run_worldborder(root, 94.1, 88, policy=BuildPolicy(allow_unknown=True))
+        text = (root / "data/demo/function/test.mcfunction").read_text(encoding="utf-8")
+        # One in-game day = 24000 ticks = 1200 legacy seconds.
+        assert "worldborder warning time 1200" in text
+
+
 def test_worldborder_timed_commands_fail_closed_by_default() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         base = Path(temp_dir)

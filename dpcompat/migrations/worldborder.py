@@ -43,7 +43,12 @@ class WorldBorderTimeRule:
                 replacements: list[tuple[int, int, str]] = []
                 for segment in iter_execute_segments(parsed):
                     values = tuple(token.value for token in segment)
-                    if len(values) != 4 or values[:2] not in {("worldborder", "add"), ("worldborder", "set")}:
+                    # Every time-bearing worldborder subcommand switched from real seconds to
+                    # game ticks at format 94.1: `set <distance> [time]`, `add <distance> [time]`,
+                    # and `warning time <time>`.  The argument always occupies token index 3.
+                    is_size_time = len(values) == 4 and values[:2] in {("worldborder", "add"), ("worldborder", "set")}
+                    is_warning_time = len(values) == 4 and values[:3] == ("worldborder", "warning", "time")
+                    if not (is_size_time or is_warning_time):
                         continue
                     token = segment[3]
                     if parsed.macro or "$(" in token.value:
@@ -106,10 +111,16 @@ class WorldBorderTimeRule:
                         message = "This tick duration cannot be expressed as whole legacy seconds"
                     else:
                         compatibility = Compatibility.UNKNOWN
-                        message = (
-                            "World-border interpolation changed from real time to game ticks; "
-                            "the syntax is migrated, but pause and /tick behavior cannot be preserved"
-                        )
+                        if is_warning_time:
+                            message = (
+                                "World-border warning time changed from real time to game ticks; "
+                                "the syntax is migrated, but pause and /tick behavior cannot be preserved"
+                            )
+                        else:
+                            message = (
+                                "World-border interpolation changed from real time to game ticks; "
+                                "the syntax is migrated, but pause and /tick behavior cannot be preserved"
+                            )
                     diagnostics.append(
                         policy_diagnostic(
                             context,

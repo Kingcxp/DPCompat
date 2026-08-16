@@ -146,6 +146,19 @@ class EntityDataTests(unittest.TestCase):
         self.assertIn("block_pos", result.value)
         self.assertNotIn("TileX", result.value)
 
+    def test_painting_and_leash_knot_positions_use_the_same_rename(self) -> None:
+        # 1.21.5 moved TileX/Y/Z into block_pos for painting and leash_knot as well.
+        for entity_id in ("minecraft:painting", "minecraft:leash_knot"):
+            result = upgrade_entity_nbt(entity_id, {"TileX": 4, "TileY": 5, "TileZ": 6})
+            self.assertEqual(result.value["block_pos"].values, (4, 5, 6))
+            self.assertNotIn("TileX", result.value)
+            downgraded = downgrade_entity_nbt(entity_id, result.value)
+            self.assertEqual(
+                (downgraded.value["TileX"], downgraded.value["TileY"], downgraded.value["TileZ"]),
+                (4, 5, 6),
+            )
+            self.assertNotIn("block_pos", downgraded.value)
+
     def test_player_respawn_upgrade(self) -> None:
         result = upgrade_entity_nbt(
             "minecraft:player",
@@ -238,6 +251,21 @@ class ItemTooltipRuleTests(unittest.TestCase):
             self.assertIn("minecraft:hide_tooltip", value)
             self.assertIn("show_in_tooltip", value)
             self.assertNotIn("tooltip_display", value)
+
+    def test_removed_hide_additional_tooltip_is_diagnosed_not_silent(self) -> None:
+        # hide_additional_tooltip was removed in 1.21.5; its hidden_components
+        # replacement depends on co-present components and cannot be inferred.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(
+                root,
+                "data/demo/loot_table/test.json",
+                '{"pools":[],"components":{"minecraft:hide_additional_tooltip":{}}}\n',
+            )
+            rule = ItemTooltipComponentsRule()
+            result = rule.apply(MigrationContext(root, PackFormat(61), PackFormat(71), BuildPolicy()))
+            self.assertEqual({item.code for item in result.diagnostics}, {"hide-additional-tooltip-cannot-upgrade"})
+            self.assertEqual({item.compatibility for item in result.diagnostics}, {Compatibility.UNKNOWN})
 
 
 class EntitySnbtRuleTests(unittest.TestCase):
@@ -561,6 +589,21 @@ class RecipeRuleTests(unittest.TestCase):
             rule = Recipe26Rule()
             result = rule.apply(MigrationContext(root, PackFormat(101, 1), PackFormat(94, 1), BuildPolicy()))
             self.assertEqual({item.code for item in result.diagnostics}, {"new-recipe-type-cannot-downgrade"})
+
+    def test_cooking_result_extra_fields_cannot_downgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [101, 1])
+            write(
+                root,
+                "data/demo/recipe/test.json",
+                '{"type":"minecraft:smelting","ingredient":"minecraft:stone",'
+                '"result":{"id":"minecraft:stone","components":{"minecraft:custom_data":{"x":1}}},'
+                '"experience":0,"cookingtime":200}\n',
+            )
+            rule = Recipe26Rule()
+            result = rule.apply(MigrationContext(root, PackFormat(101, 1), PackFormat(94, 1), BuildPolicy()))
+            self.assertEqual({item.code for item in result.diagnostics}, {"cooking-result-fields-cannot-downgrade"})
+            self.assertEqual({item.compatibility for item in result.diagnostics}, {Compatibility.UNKNOWN})
 
     def test_time_check_clock_default_is_inserted(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
