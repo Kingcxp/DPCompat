@@ -25,4 +25,4 @@
 
 ## Commit
 
-使用 Conventional Commits。一个提交只做一个可测试目的；正文解释安全边界、证据和验证命令。完整的 C00–C48 示例见 `docs/FROM_ZERO_FILE_BY_FILE.zh-CN.md`。
+使用 Conventional Commits。一个提交只做一个可测试目的；正文解释安全边界、证据和验证命令。完整的开发规范见 `docs/agent/`。

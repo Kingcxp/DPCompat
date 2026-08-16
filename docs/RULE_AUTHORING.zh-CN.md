@@ -105,4 +105,4 @@ provider 可返回单条规则或 iterable；也可直接导出 `RULES`。regist
 
 每条双向规则至少覆盖：边界内 no-op、upgrade、downgrade、冲突、默认值、非默认有损/不支持、宏/未知语法、二次执行幂等、无效输入、完整 build 后无残留。声明式规则还要测 schema extra key、危险 glob、缺失方向和重复 ID。
 
-提交正文应回答：为什么安全、证据是什么、哪些输入仍失败。C00–C53 的 commit 模板见 `FROM_ZERO_FILE_BY_FILE.zh-CN.md`。
+提交正文应回答：为什么安全、证据是什么、哪些输入仍失败。提交模板与完整流程见 `docs/agent/MIGRATION_RULES.md`。

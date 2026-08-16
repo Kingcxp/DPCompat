@@ -29,10 +29,35 @@ class DocumentationTests(unittest.TestCase):
                     missing.append(f"{relative}:{node.lineno}: {node.name}")
         self.assertEqual([], missing, "Missing contributor-facing docstrings")
 
-    def test_reconstruction_guide_contains_every_checkpoint(self) -> None:
-        guide = (PROJECT_ROOT / "docs/FROM_ZERO_FILE_BY_FILE.zh-CN.md").read_text(encoding="utf-8")
-        missing = [f"C{number:02d}" for number in range(54) if f"## C{number:02d}" not in guide]
-        self.assertEqual([], missing, "The reconstruction guide lost a checkpoint")
+    def test_ai_agent_docs_cover_every_subsystem(self) -> None:
+        agent_dir = PROJECT_ROOT / "docs" / "agent"
+        required = {
+            "README.md": "index and navigation",
+            "ARCHITECTURE.md": "module map and data flow",
+            "CODING_CONVENTIONS.md": "style and gate rules",
+            "MIGRATION_RULES.md": "rule protocol and boundaries",
+            "UI_I18N.md": "TUI and localization system",
+            "PLUGIN_SYSTEM.md": "plugin store internals",
+            "TESTING.md": "test layout and verification",
+            "RELEASE.md": "release process",
+        }
+        for name, purpose in required.items():
+            path = agent_dir / name
+            self.assertTrue(path.is_file(), f"docs/agent/{name} is missing ({purpose})")
+            self.assertGreater(len(path.read_text(encoding="utf-8")), 500, f"docs/agent/{name} looks empty")
+
+    def test_doc_links_in_readme_resolve(self) -> None:
+        """Every markdown link under docs/ and plugin-development/ in the README resolves."""
+
+        readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+        targets = {match.group(1) for match in __import__("re").finditer(r"\]\(([^)#]+)\.md\)", readme)}
+        for target in targets:
+            if not target.startswith(("docs/", "plugin-development/")):
+                continue
+            self.assertTrue(
+                (PROJECT_ROOT / f"{target}.md").is_file(),
+                f"README links to a missing document: {target}.md",
+            )
 
 
 if __name__ == "__main__":

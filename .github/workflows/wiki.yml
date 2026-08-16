@@ -16,6 +16,7 @@ on:
       - "README.md"
       - "CHANGELOG.md"
       - "docs/**"
+      - "plugin-development/**"
       - "scripts/sync_wiki.py"
       - ".github/workflows/wiki.yml"
   workflow_dispatch:

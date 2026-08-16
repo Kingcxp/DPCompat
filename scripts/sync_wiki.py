@@ -24,7 +24,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 # sidebar links stay stable, while the content stays in the original language.
 PAGES: tuple[tuple[str, str], ...] = (
     ("README.md", "Home.md"),
-    ("docs/PLUGIN_DEVELOPMENT.zh-CN.md", "Plugin-Development.md"),
+    ("plugin-development/PLUGIN_DEVELOPMENT.zh-CN.md", "Plugin-Development.md"),
     ("docs/ADDING_A_NEW_VERSION.zh-CN.md", "Adding-A-New-Version.md"),
     ("docs/ARCHITECTURE.zh-CN.md", "Architecture.md"),
     ("docs/RULE_AUTHORING.zh-CN.md", "Rule-Authoring.md"),
@@ -52,13 +52,14 @@ SIDEBAR = """## 快速导航
 def _rewrite_links(text: str) -> str:
     """Point markdown links to shipped pages at their wiki page names.
 
-    Both ``docs/X.zh-CN.md`` and bare ``X.zh-CN.md`` references resolve to the
-    wiki page; links to anything else are left untouched.
+    Both ``docs/X.zh-CN.md``/``plugin-development/X.zh-CN.md`` and bare
+    ``X.zh-CN.md`` references resolve to the wiki page; links to anything
+    else are left untouched.
     """
 
     def replace(match: re.Match[str]) -> str:
         target = match.group(1)
-        candidates = (target, target.removeprefix("docs/"))
+        candidates = (target, target.removeprefix("docs/"), target.removeprefix("plugin-development/"))
         for candidate in candidates:
             if candidate in _LINK_TARGETS:
                 return f"]({_LINK_TARGETS[candidate].removesuffix('.md')})"

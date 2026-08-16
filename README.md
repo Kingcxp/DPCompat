@@ -49,7 +49,8 @@ dpcompat inspect examples/simple_pack
 ```
 
 ```bash
-dpcompat tui                   # 交互式 TUI（勾选目标版本、管理插件、启动迁移）
+dpcompat tui                   # 交互式 TUI（勾选目标版本、管理插件、启动迁移；按 l 或点右上角切换语言）
+dpcompat tui --lang en         # 指定界面语言（zh-CN / en），偏好会持久化
 dpcompat plugin list           # 查看迁移插件
 ```
 
@@ -107,7 +108,26 @@ uv run dpcompat plugin install my_rules.py
 uv run dpcompat plugin disable clocks@101.1
 ```
 
-插件目录默认位于 dpcompat 包所在位置（`site-packages/dpcompat/plugins`，可用 `DPCOMPAT_PLUGIN_DIR` 覆盖），启用状态持久化在 `plugins.toml`，插件只影响当前 Python 环境。TUI 的插件管理页按目标版本分组展示插件（每版本一个可折叠列表），点击插件行打开类似 VS Code 扩展页的详情页（渲染插件自带的 Markdown 文档，可启用/禁用或卸载）；新增正式版后，主界面目标版本勾选列表与插件页分组都会自动出现新版本。插件文件格式、元数据契约与安全要求见 [`docs/PLUGIN_DEVELOPMENT.zh-CN.md`](docs/PLUGIN_DEVELOPMENT.zh-CN.md)。
+### 插件市场
+
+DPCompat 内置官方插件仓库（`https://raw.githubusercontent.com/Kingcxp/DPCompat-repo/main`），可以直接浏览、搜索、安装第三方迁移插件，也可以注册自己的仓库（任何静态文件服务器，遵循同一目录契约）：
+
+```bash
+dpcompat plugin repo list                          # 已注册的仓库（官方默认内置）
+dpcompat plugin repo add my-repo <base-url>        # 注册仓库（会先拉取目录校验）
+dpcompat plugin repo remove my-repo
+
+dpcompat plugin market list                        # 浏览全部插件
+dpcompat plugin market list --query respawn        # 搜索（id/名称/简介/标签）
+dpcompat plugin market show player-respawn-yaw@88  # 详情 + Markdown 文档
+dpcompat plugin market install player-respawn-yaw@88
+```
+
+TUI：插件管理页 → “插件市场...” 打开市场（搜索框 + 分类过滤 + 详情页安装），
+安装后回到插件管理页即可启用/禁用/卸载，插件多语言预览跟随界面语言。官方仓库的
+插件上架与校验流程见 [`plugin-development/PLUGIN_DEVELOPMENT.zh-CN.md`](plugin-development/PLUGIN_DEVELOPMENT.zh-CN.md)。
+
+插件目录默认位于 dpcompat 包所在位置（`site-packages/dpcompat/plugins`，可用 `DPCOMPAT_PLUGIN_DIR` 覆盖），启用状态持久化在 `plugins.toml`，插件只影响当前 Python 环境。TUI 的插件管理页按目标版本分组展示插件（每版本一个可折叠列表），点击插件行打开类似 VS Code 扩展页的详情页（渲染插件自带的 Markdown 文档，可启用/禁用或卸载）；插件简介（`description`）本身也支持 Markdown，无独立文档时按 Markdown 渲染。插件可在 `PLUGIN["localizations"]` 中为不同语言提供 `name`/`description`/`readme`，TUI 预览会跟随界面语言自动切换。新增正式版后，主界面目标版本勾选列表与插件页分组都会自动出现新版本。插件文件格式、元数据契约与安全要求见 [`plugin-development/PLUGIN_DEVELOPMENT.zh-CN.md`](plugin-development/PLUGIN_DEVELOPMENT.zh-CN.md)。
 
 ## 配置
 
@@ -219,9 +239,10 @@ powershell -ExecutionPolicy Bypass -File scripts/build.ps1 smoke
 
 最重要的维护文档：
 
-- [`docs/FROM_ZERO_FILE_BY_FILE.zh-CN.md`](docs/FROM_ZERO_FILE_BY_FILE.zh-CN.md)：C00–C56，从空目录逐文件编辑、验收与严密 commit；
+- [`docs/DEVELOPMENT_GUIDE.zh-CN.md`](docs/DEVELOPMENT_GUIDE.zh-CN.md)：日常开发速览与改动路由；
+- [`docs/agent/`](docs/agent/README.md)：给 AI 协作者的完整开发说明（架构、约定、规则、插件、TUI/多语言、测试、发布）；
 - [`docs/ADDING_A_NEW_VERSION.zh-CN.md`](docs/ADDING_A_NEW_VERSION.zh-CN.md)：登记新正式版、新 feature 与新迁移规则的完整步骤；
-- [`docs/PLUGIN_DEVELOPMENT.zh-CN.md`](docs/PLUGIN_DEVELOPMENT.zh-CN.md)：插件文件格式、安装/开关与安全要求；
+- [`plugin-development/PLUGIN_DEVELOPMENT.zh-CN.md`](plugin-development/PLUGIN_DEVELOPMENT.zh-CN.md)：插件文件格式、安装/开关、多语言与安全要求；
 - [`docs/OFFICIAL_CHANGE_AUDIT.zh-CN.md`](docs/OFFICIAL_CHANGE_AUDIT.zh-CN.md)：官方变更与实现结论；
 - [`docs/ARCHITECTURE.zh-CN.md`](docs/ARCHITECTURE.zh-CN.md)：模块职责与数据流；
 - [`docs/RULE_AUTHORING.zh-CN.md`](docs/RULE_AUTHORING.zh-CN.md)：Python、entry point 与声明式规则；

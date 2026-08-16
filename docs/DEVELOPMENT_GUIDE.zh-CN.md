@@ -1,6 +1,6 @@
 # 开发指南速览
 
-本文件用于日常定位；从空目录亲手编写时，以 `FROM_ZERO_FILE_BY_FILE.zh-CN.md` 的 C00–C53 为权威顺序。
+本文件用于日常定位；完整的分层开发说明与 AI 协作指南见 [`docs/agent/`](agent/README.md)。
 
 ## 环境和质量门禁
 
@@ -21,7 +21,7 @@ powershell -ExecutionPolicy Bypass -File scripts/build.ps1 smoke
 
 `make check` 依次运行 Ruff format check、Ruff lint、严格 mypy、pyright 和 pytest。新增依赖后先更新 `pyproject.toml`，再执行 `uv lock`；CI 使用 `uv sync --locked --all-groups`。
 
-新增正式版/feature/规则时，按 [`ADDING_A_NEW_VERSION.zh-CN.md`](ADDING_A_NEW_VERSION.zh-CN.md) 的四层步骤执行；编写可分发规则插件时，按 [`PLUGIN_DEVELOPMENT.zh-CN.md`](PLUGIN_DEVELOPMENT.zh-CN.md) 的格式与安全要求执行。
+新增正式版/feature/规则时，按 [`ADDING_A_NEW_VERSION.zh-CN.md`](ADDING_A_NEW_VERSION.zh-CN.md) 的四层步骤执行；编写可分发规则插件时，按 [`plugin-development/PLUGIN_DEVELOPMENT.zh-CN.md`](../plugin-development/PLUGIN_DEVELOPMENT.zh-CN.md) 的格式与安全要求执行。
 
 ## 改动路由
 
@@ -31,10 +31,10 @@ powershell -ExecutionPolicy Bypass -File scripts/build.ps1 smoke
 | 新资源/命令最低版本 | `data/features.json` | scanner test、official audit |
 | 简单 JSON 变更 | 项目 declarative rule 或 JSON 插件 | schema/双向/build tests |
 | 命令/SNBT/NBT 语义 | `migrations/` 或 Python 插件 | `sources.py`、registry、双向/冲突 tests |
-| 可分发规则集 | 插件文件（`.py`/`.json`） | `docs/PLUGIN_DEVELOPMENT.zh-CN.md`、插件测试 |
+| 可分发规则集 | 插件文件（`.py`/`.json`） | `plugin-development/PLUGIN_DEVELOPMENT.zh-CN.md`、插件测试 |
 | 新配置 | Pydantic `config.py` | example TOML、CLI、invalid-input test |
 | CLI 呈现 | `cli.py` | Rich 与 JSON stdout tests |
-| TUI 呈现 | `ui/` | Textual smoke tests |
+| TUI 呈现 / 多语言 | `ui/` + `i18n.py` | Textual smoke tests、翻译表测试 |
 | 构建/overlay | `engine.py` / `packio.py` | deterministic/security/build tests |
 
 ## 规则开发循环
@@ -53,4 +53,4 @@ powershell -ExecutionPolicy Bypass -File scripts/build.ps1 smoke
 
 ## 提交约定
 
-一个 commit 完成一个可独立验证的边界。标题使用 Conventional Commits；正文至少写动机、安全条件、失败条件、来源和实际测试命令。逐提交模板见从零指南。
+一个 commit 完成一个可独立验证的边界。标题使用 Conventional Commits；正文至少写动机、安全条件、失败条件、来源和实际测试命令。

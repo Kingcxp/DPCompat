@@ -34,6 +34,20 @@ PLUGIN = {
 
 在这里用 Markdown 详细说明插件负责的迁移。
 """,
+    # 可选：多语言显示。键为语言代码（与 TUI 语言一致，目前支持 zh-CN / en）；
+    # TUI 会跟随界面语言自动切换插件的名称、简介与文档预览。
+    "localizations": {
+        "en": {
+            "name": "My Data Pack Rules",
+            "description": "Renames the legacy fields and handles the 94.1 boundary.",
+            "readme": """# My Data Pack Rules
+
+## What this plugin does
+
+Explain the migration in Markdown.
+""",
+        }
+    },
     # 可选：规则没有自带 official_sources 时，使用这里的一手来源。
     "official_sources": ["https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-11"],
 }
@@ -60,13 +74,15 @@ RULES = (DemoRenameRule(),)
 
 - `PLUGIN` 字典必填：`id`（小写 `[a-z0-9._@-]`）、`name`、`description` 都非空且去首尾空格；
 - `PLUGIN["target_version"]` 必填：声明本插件负责迁移到哪一个正式版本（例如 `"1.21.9"`），必须是在 `releases.json` 中注册的版本；插件管理页按它分组，新增正式版后即可直接为它写插件；
+- `PLUGIN["description"]` 支持 Markdown：TUI 插件列表行会去掉 Markdown 标记显示为纯文本提示，详情页在未提供 `readme` 时按 Markdown 渲染它；
 - `PLUGIN["readme"]` 可选：一段 Markdown 文档，TUI 插件详情页会完整渲染它；不提供时详情页只显示简短描述；
+- `PLUGIN["localizations"]` 可选：键为语言代码（与 TUI 语言一致，如 `"en"`），值为 `{"name", "description", "readme"}`。TUI 预览跟随界面语言自动选择；语言缺失或 `readme` 为空时回退到顶层字段；
 - 必须暴露 `RULES` 或 `dpcompat_rules()`；
 - 每条规则的 `id` 稳定唯一，与内置规则不冲突；
 - 每条规则要么自带 `official_sources`（HTTP(S) 一手来源），要么由 `PLUGIN["official_sources"]` 统一提供——注册表拒绝无来源规则；
 - 保持模块无副作用：插件文件会被加载多次（安装时校验 + 构建时注册），不要在模块顶层执行 I/O 或修改全局状态。
 
-规则协议与安全要求的完整说明见 [`RULE_AUTHORING.zh-CN.md`](RULE_AUTHORING.zh-CN.md) 与 [`SAFETY_MODEL.zh-CN.md`](SAFETY_MODEL.zh-CN.md)。
+规则协议与安全要求的完整说明见 [`RULE_AUTHORING.zh-CN.md`](../docs/RULE_AUTHORING.zh-CN.md) 与 [`SAFETY_MODEL.zh-CN.md`](../docs/SAFETY_MODEL.zh-CN.md)。
 
 ## 3. JSON 声明式插件
 
@@ -81,7 +97,13 @@ RULES = (DemoRenameRule(),)
     "description": "把 demo:old 精确替换为 demo:new。",
     "version": "1.0.0",
     "target_version": "1.21.9",
-    "readme": "# 我的声明式规则\n\n把 `demo:old` 精确替换为 `demo:new`。"
+    "readme": "# 我的声明式规则\n\n把 `demo:old` 精确替换为 `demo:new`。",
+    "localizations": {
+      "en": {
+        "name": "My Declarative Rules",
+        "description": "Replaces demo:old with demo:new."
+      }
+    }
   },
   "rules": [
     {
@@ -147,14 +169,33 @@ dpcompat tui
 
 - 主界面按 `p`（或点击右上角“插件管理”）进入插件页；
 - 插件页是一个**版本列表**：每个有插件的目标版本是一行整宽按钮（`▸`/`▾` 切换），点击展开/收起该版本的插件列表；
-- 展开后每个插件也是一行按钮：第一行是插件名、版本、来源徽标与启用状态（● 已启用 / ○ 已禁用），第二行是简短描述；
-- 点击插件行打开**详情页**（类似 VS Code 扩展页）：显示插件 id、版本、来源、目标版本与 `PLUGIN["readme"]` 提供的完整 Markdown 文档，并提供“启用/禁用”与（文件插件的）“卸载”按钮；
+- 展开后每个插件也是一行按钮：第一行是插件名、版本、来源徽标与启用状态（● 已启用 / ○ 已禁用），第二行是简短描述（Markdown 标记会被压成纯文本）；
+- 点击插件行打开**详情页**（类似 VS Code 扩展页）：显示插件 id、版本、来源、目标版本与 `PLUGIN["readme"]` 提供的完整 Markdown 文档（无 readme 时按 Markdown 渲染 `description`），并提供“启用/禁用”与（文件插件的）“卸载”按钮；
+- **多语言预览跟随 TUI**：主界面按 `l`（或点右上角语言按钮）切换界面语言（zh-CN / en）后，插件页与详情页会使用 `PLUGIN["localizations"]` 中对应语言的名称、简介与文档；
 - 点击“安装插件文件...”用文件树选择 `.py`/`.json` 文件，安装后立即出现在对应版本分组；
 - 点击“创建插件模板...”选择位置（可勾选创建同名子文件夹）生成可直接编辑的模板项目，适合快速开始开发；
 - 所有开关即时持久化。
 - 新增正式版（`releases.json`）后，主界面目标版本列表自动出现新版本；为它编写的插件只需把 `target_version` 指向新版本，插件页自动出现对应分组。
 
 模板项目包含 `插件名.py`（`PLUGIN` 元数据 + 示例规则骨架）与 `README.md`，生成后即可用 `dpcompat plugin install` 或 TUI 安装。
+
+## 5.5 发布到官方插件仓库
+
+[DPCompat 官方插件仓库](https://github.com/Kingcxp/DPCompat-repo) 是插件市场的默认
+仓库。上架流程 = 一个文件夹 + 一次 PR：
+
+1. 用 `dpcompat plugin template <id>` 或 TUI 模板生成插件文件，实现并本地验证
+   （`dpcompat plugin install` + `dpcompat rules --json`）；
+2. 克隆仓库，在对应目标版本的分类目录下新建 `<插件id>/` 文件夹，放入插件文件、
+   可选的 `plugin.json`（`author`/`license`/`homepage`/`tags`）与 `README.md`；
+3. 把插件 id 追加到该分类的 `INDEX.json`；
+4. 本地校验：`python tools/validate_plugin.py <分类>/<插件id>`；
+5. 提交 PR——CI 用 **dpcompat 自身的插件检查器与规则注册表**只校验你改动的插件
+   （结构、元数据、`target_version` 登记、规则 id/协议/一手来源）。
+
+合并后用户即可用 `dpcompat plugin market list/search/install` 或 TUI 插件市场
+安装你的插件。详细说明见仓库的 `docs/`（getting-started / marketplace-metadata /
+categories / validation）。
 
 ## 6. 开发与测试建议
 
@@ -163,7 +204,7 @@ dpcompat tui
 3. 每条规则覆盖：no-op、upgrade、downgrade、冲突、默认值、不可迁移输入、宏、二次执行幂等；
 4. 安装前用 `dpcompat plugin install` 校验，再用 `dpcompat rules --json` 确认生效顺序；
 5. 完整 `build` 后让 scanner 复核目标残留——规则自报成功不算数；
-6. 需要对外发布的插件库，也可通过 `pyproject.toml` 的 `dpcompat.rules` entry point 注册（见 `RULE_AUTHORING.zh-CN.md`），但 entry point 插件不参与插件列表与开关管理。
+6. 需要对外发布的插件库，也可通过 `pyproject.toml` 的 `dpcompat.rules` entry point 注册（见 `../docs/RULE_AUTHORING.zh-CN.md`），但 entry point 插件不参与插件列表与开关管理。
 
 ## 7. 安全底线（为什么这些限制存在）
 
@@ -173,4 +214,4 @@ dpcompat tui
 - **id 冲突即拒绝**：安装时检测，避免两个插件静默竞争同一条规则；
 - **插件文件可被多次加载**：请保持模块顶层无副作用，插件也请不要要求“安装后修改内置规则”。
 
-有问题或想贡献插件时，请先阅读 `RULE_AUTHORING.zh-CN.md`、`SAFETY_MODEL.zh-CN.md` 与 `CONTRIBUTING.md`。
+有问题或想贡献插件时，请先阅读 `../docs/RULE_AUTHORING.zh-CN.md`、`../docs/SAFETY_MODEL.zh-CN.md` 与 `../CONTRIBUTING.md`。
