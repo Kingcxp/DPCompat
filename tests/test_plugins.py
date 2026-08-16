@@ -115,6 +115,7 @@ def test_scaffold_plugin_template_creates_a_working_project(tmp_path: Path) -> N
     assert '"id": "demo.template@88"' in source
     assert '"target_version": "1.21.9"' in source
     assert '"readme"' in source
+    assert '"localizations"' in source  # the template demonstrates per-language metadata
     assert "RULES = (ExampleRule(),)" in source
 
     # The scaffolded file must be installable as a real plugin.
@@ -147,6 +148,46 @@ def test_builtin_plugins_cover_every_builtin_rule_exactly_once() -> None:
         assert info.target_version
         covered.extend(info.rules)
     assert sorted(covered) == sorted(rule.id for rule in BUILTIN_RULES)
+
+
+def test_builtin_plugins_carry_english_localizations() -> None:
+    builtin = next(info for info in BUILTIN_PLUGINS if info.id == "gamerules@94.1")
+    assert "en" in builtin.localizations
+    localized = builtin.localized("en")
+    assert localized.name == "Gamerule registry renames"
+    assert localized.description
+    # The localized readme is regenerated in the requested language.
+    assert "Included rules" in localized.readme
+    # Canonical (zh-CN) fields stay untouched.
+    assert builtin.name == "gamerule 注册表改名"
+    # Unknown languages resolve to the canonical record itself.
+    assert builtin.localized("fr") is builtin
+
+
+def test_python_plugin_localizations_resolve_per_language(plugin_dir: Path, tmp_path: Path) -> None:
+    source = tmp_path / "l10n.py"
+    source.write_text(
+        _PYTHON_PLUGIN.replace(
+            '"readme": "## 文档\\n\\n这是演示插件的说明。",',
+            '"readme": "## 文档\\n\\n这是演示插件的说明。",\n'
+            '    "localizations": {\n'
+            '        "en": {\n'
+            '            "name": "Demo Python Plugin",\n'
+            '            "description": "Renames demo:old to demo:new.",\n'
+            '            "readme": "## Docs\\n\\nEnglish documentation.",\n'
+            "        }\n"
+            "    },",
+        ),
+        encoding="utf-8",
+    )
+    store = PluginStore()
+    info = store.install(source)
+    localized = info.localized("en")
+    assert localized.name == "Demo Python Plugin"
+    assert localized.description == "Renames demo:old to demo:new."
+    assert localized.readme == "## Docs\n\nEnglish documentation."
+    assert localized.id == info.id
+    assert info.localized("zh-CN").name == "演示 Python 插件"
 
 
 def test_install_enable_disable_uninstall_round_trip(plugin_dir: Path, tmp_path: Path) -> None:

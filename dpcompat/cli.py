@@ -22,7 +22,9 @@ from rich.text import Text
 from .config import ProjectConfig, load_config
 from .detector import detect_pack
 from .engine import compile_pack
+from .i18n import LANGUAGES as _LANGUAGES
 from .logging_config import setup_logging
+from .market import MarketError
 from .models import BuildPolicy, Diagnostic, PackFormat, Severity, VersionProfile
 from .packio import materialize_source
 from .plugins import PluginStore, create_effective_registry
@@ -297,7 +299,7 @@ def _command_plugin_list(args: argparse.Namespace) -> int:
     store = PluginStore()
     infos = store.list_plugins()
     if args.json:
-        console.print_json(_json([item.model_dump(mode="json", exclude={"readme"}) for item in infos]))
+        console.print_json(_json([item.model_dump(mode="json", exclude={"readme", "localizations"}) for item in infos]))
         return 0
     table = Table(title="Migration rule plugins", header_style="bold magenta")
     table.add_column("Enabled", justify="center")
@@ -349,10 +351,141 @@ def _command_plugin_disable(args: argparse.Namespace) -> int:
     return 0
 
 
+def _command_plugin_template(args: argparse.Namespace) -> int:
+    from .plugins import scaffold_plugin_template
+
+    created = scaffold_plugin_template(args.name, args.location, subfolder=args.subfolder)
+    console.print(f"Created plugin template [bold cyan]{created}[/bold cyan]")
+    return 0
+
+
+def _command_plugin_repo_add(args: argparse.Namespace) -> int:
+    from .market import add_repo
+
+    spec = add_repo(args.name, args.url, replace=args.replace)
+    console.print(f"Registered repository [bold cyan]{spec.name}[/bold cyan] ({spec.url})")
+    return 0
+
+
+def _command_plugin_repo_remove(args: argparse.Namespace) -> int:
+    from .market import remove_repo
+
+    remove_repo(args.name)
+    console.print(f"Removed repository [bold cyan]{args.name}[/bold cyan]")
+    return 0
+
+
+def _command_plugin_repo_list(args: argparse.Namespace) -> int:
+    from .market import load_repos
+
+    repos = load_repos()
+    if args.json:
+        console.print_json(_json([item.model_dump(mode="json") for item in repos]))
+        return 0
+    table = Table(title="Plugin repositories", header_style="bold magenta")
+    table.add_column("Name", style="cyan")
+    table.add_column("Enabled", justify="center")
+    table.add_column("URL", overflow="fold")
+    for item in repos:
+        table.add_row(item.name, "on" if item.enabled else "off", item.url)
+    console.print(table)
+    return 0
+
+
+def _market_plugins(args: argparse.Namespace) -> list[Any]:
+    from .market import list_market_plugins
+
+    return list_market_plugins(
+        repo_name=args.repo,
+        category=getattr(args, "category", None),
+        query=getattr(args, "query", None),
+    )
+
+
+def _command_market_list(args: argparse.Namespace) -> int:
+    plugins = _market_plugins(args)
+    if args.json:
+        console.print_json(
+            _json(
+                [
+                    {
+                        **item.info.model_dump(mode="json", exclude={"readme", "localizations"}),
+                        "repo": item.repo,
+                        "category": item.category,
+                        **item.meta.model_dump(mode="json"),
+                    }
+                    for item in plugins
+                ]
+            )
+        )
+        return 0
+    table = Table(title="Marketplace plugins", header_style="bold magenta")
+    table.add_column("Plugin", style="cyan")
+    table.add_column("Name")
+    table.add_column("Target", justify="center")
+    table.add_column("Repo", justify="center")
+    table.add_column("Description", overflow="fold")
+    for item in plugins:
+        table.add_row(
+            item.info.id,
+            item.info.name,
+            item.info.target_version,
+            item.repo,
+            item.info.description,
+        )
+    console.print(table)
+    return 0
+
+
+def _command_market_show(args: argparse.Namespace) -> int:
+    from rich.markdown import Markdown
+
+    plugins = [item for item in _market_plugins(args) if item.info.id == args.plugin_id]
+    if not plugins:
+        error_console.print(
+            f"[bold red]ERROR[/bold red] No plugin named {args.plugin_id!r} in the configured repositories"
+        )
+        return 2
+    item = plugins[0]
+    if args.json:
+        payload = item.info.model_dump(mode="json")
+        payload.update(item.meta.model_dump(mode="json"))
+        payload["repo"] = item.repo
+        payload["category"] = item.category
+        console.print_json(_json(payload))
+        return 0
+    info = item.info
+    console.print(
+        f"[bold cyan]{info.name}[/bold cyan]  [dim]{info.id} · v{info.version} · target {info.target_version}[/dim]"
+    )
+    extra = []
+    if item.meta.author:
+        extra.append(f"作者 {item.meta.author}")
+    if item.meta.license:
+        extra.append(f"License {item.meta.license}")
+    if item.meta.homepage:
+        extra.append(item.meta.homepage)
+    if extra:
+        console.print("[dim]" + " · ".join(extra) + "[/dim]")
+    console.print(info.description)
+    if info.readme:
+        console.print(Markdown(info.readme))
+    return 0
+
+
+def _command_market_install(args: argparse.Namespace) -> int:
+    from .market import install_market_plugin
+
+    info = install_market_plugin(args.plugin_id, PluginStore(), repo_name=args.repo)
+    console.print(f"Installed plugin [bold cyan]{info.name}[/bold cyan] ({info.id}) from the marketplace")
+    return 0
+
+
 def _command_tui(args: argparse.Namespace) -> int:
+    from .i18n import resolve_language
     from .ui import DpCompatApp
 
-    DpCompatApp(config_path=args.config).run()
+    DpCompatApp(config_path=args.config, language=resolve_language(getattr(args, "lang", None))).run()
     return 0
 
 
@@ -489,8 +622,61 @@ def build_parser() -> argparse.ArgumentParser:
     plugin_disable.add_argument("plugin_id")
     plugin_disable.set_defaults(handler=_command_plugin_disable)
 
+    plugin_template = plugin_subparsers.add_parser("template", help="Scaffold a new plugin project")
+    plugin_template.add_argument("name", help="Plugin id / file name (lowercase letters, digits, . _ -)")
+    plugin_template.add_argument(
+        "--location", type=Path, default=Path.cwd(), help="Target directory (default: current)"
+    )
+    plugin_template.add_argument("--subfolder", action="store_true", help="Create a same-named subfolder")
+    plugin_template.set_defaults(handler=_command_plugin_template)
+
+    plugin_repo = plugin_subparsers.add_parser("repo", help="Manage plugin repositories")
+    repo_subparsers = plugin_repo.add_subparsers(dest="repo_action", required=True)
+
+    repo_add = repo_subparsers.add_parser(
+        "add", help="Register a plugin repository (validated by fetching its catalog)"
+    )
+    repo_add.add_argument("name", help="Repository name (lowercase letters, digits, . _ -)")
+    repo_add.add_argument("url", help="Base URL of the repository file root (GitHub: raw URL)")
+    repo_add.add_argument("--replace", action="store_true", help="Replace an existing registration")
+    repo_add.set_defaults(handler=_command_plugin_repo_add)
+
+    repo_remove = repo_subparsers.add_parser("remove", help="Unregister a plugin repository")
+    repo_remove.add_argument("name")
+    repo_remove.set_defaults(handler=_command_plugin_repo_remove)
+
+    repo_list = repo_subparsers.add_parser("list", help="List registered plugin repositories")
+    repo_list.add_argument("--json", action="store_true")
+    repo_list.set_defaults(handler=_command_plugin_repo_list)
+
+    plugin_market = plugin_subparsers.add_parser("market", help="Browse and install plugins from repositories")
+    market_subparsers = plugin_market.add_subparsers(dest="market_action", required=True)
+
+    market_list = market_subparsers.add_parser("list", help="Browse plugins across repositories")
+    market_list.add_argument("--repo", help="Restrict to one repository by name")
+    market_list.add_argument("--category", help="Restrict to one category id")
+    market_list.add_argument("--query", "-q", help="Search id, name, description, tags, or target version")
+    market_list.add_argument("--json", action="store_true")
+    market_list.set_defaults(handler=_command_market_list)
+
+    market_show = market_subparsers.add_parser("show", help="Show one plugin's details and Markdown documentation")
+    market_show.add_argument("plugin_id")
+    market_show.add_argument("--repo", help="Restrict to one repository by name")
+    market_show.add_argument("--json", action="store_true")
+    market_show.set_defaults(handler=_command_market_show)
+
+    market_install = market_subparsers.add_parser("install", help="Download and install a plugin from a repository")
+    market_install.add_argument("plugin_id")
+    market_install.add_argument("--repo", help="Restrict to one repository by name")
+    market_install.set_defaults(handler=_command_market_install)
+
     tui_parser = subparsers.add_parser("tui", help="Open the interactive Textual interface")
     tui_parser.add_argument("--config", "-c", type=Path, help="Optional dpcompat.toml")
+    tui_parser.add_argument(
+        "--lang",
+        choices=sorted(_LANGUAGES),
+        help="UI language (overrides DPCOMPAT_LANG and saved preferences)",
+    )
     tui_parser.set_defaults(handler=_command_tui)
     return parser
 
@@ -504,7 +690,7 @@ def run_application(argv: list[str] | None = None) -> int:
         parser.error("--verbose and --quiet cannot be combined")
     try:
         return int(args.handler(args))
-    except (OSError, ValueError, ValidationError, shutil.Error) as exc:
+    except (OSError, ValueError, ValidationError, shutil.Error, MarketError) as exc:
         logger.exception("Command failed")
         error_console.print(f"[bold red]ERROR[/bold red] {exc}")
         return 2

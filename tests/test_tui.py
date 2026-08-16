@@ -11,7 +11,7 @@ from dpcompat.ui import DpCompatApp
 from dpcompat.ui.app import PluginDetailScreen, PluginsScreen, TemplateScreen, VersionSection
 from dpcompat.versions import PROFILES
 from textual.containers import Vertical
-from textual.widgets import Button, Checkbox, Input, Markdown
+from textual.widgets import Button, Checkbox, Input, Markdown, Static
 
 
 def _run(coro) -> None:
@@ -94,9 +94,11 @@ def test_tui_output_subfolder_field_toggles_and_validates(
             # Invalid names are rejected before the build starts.
             app.screen.query_one("#pack-path-input", Input).value = str(tmp_path)
             name_input.value = "bad/name"
-            app.screen.query_one("#build-start", Button).scroll_visible(animate=False)
+            build_button = app.screen.query_one("#build-start", Button)
+            build_button.scroll_visible(animate=False)
+            build_button.focus()
             await pilot.pause()
-            await pilot.click("#build-start")
+            await pilot.press("enter")
             await pilot.pause()
             # The invalid subfolder name must abort before a build worker starts.
             assert not [worker for worker in app.workers if worker.group == "build"]
@@ -203,8 +205,188 @@ def test_tui_template_screen_scaffolds_a_project(
     _run(scenario())
 
 
+def test_tui_plugin_detail_renders_markdown_description_without_readme(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DPCOMPAT_PLUGIN_DIR", str(tmp_path / "plugins"))
+    from dpcompat.plugins import PluginInfo
+
+    info = PluginInfo(
+        id="demo.markdown@88",
+        name="Markdown Intro",
+        description="**Bold** summary\n\n- one\n- two",
+        version="1.0.0",
+        origin="file",
+        kind="python",
+        enabled=True,
+        target_version="1.21.9",
+        readme="",  # no full documentation: the description itself is rendered as Markdown
+    )
+
+    async def scenario() -> None:
+        app = DpCompatApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app.push_screen(PluginDetailScreen(info, PluginStore()))
+            await pilot.pause()
+            doc = app.screen.query_one("#detail-doc", Markdown)
+            assert doc is not None  # the Markdown widget is used for the description
+            assert app.screen.query_one(".hint", Static) is not None  # no-readme hint shown
+
+    _run(scenario())
+
+
+def test_tui_marketplace_browses_and_installs_plugins(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The marketplace screen lists remote plugins and installs one on demand."""
+
+    import json as _json
+
+    from dpcompat import market
+    from dpcompat.ui.app import MarketDetailScreen, MarketScreen
+
+    from helpers import repo_server
+
+    monkeypatch.setenv("DPCOMPAT_PLUGIN_DIR", str(tmp_path / "plugins"))
+    plugin_py = '''"""demo.market: TUI fixture plugin."""
+
+from dpcompat.migrations.base import MigrationContext, RuleResult, crosses
+from dpcompat.models import Compatibility, MigrationRecord, PackFormat
+
+PLUGIN = {
+    "id": "demo.market@88",
+    "name": "Market Demo",
+    "description": "TUI marketplace fixture.",
+    "version": "1.0.0",
+    "target_version": "1.21.9",
+    "readme": "# Market Demo\\n\\nReadme.",
+    "official_sources": ["https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-9"],
+}
+
+
+class DemoRule:
+    id = "demo.market.rule@88"
+    boundary = PackFormat(88)
+    priority = 450
+
+    def applies(self, source, target):
+        return crosses(source, target, self.boundary)
+
+    def apply(self, context):
+        return RuleResult(MigrationRecord(self.id, Compatibility.LOSSLESS, 0))
+
+
+RULES = (DemoRule(),)
+'''
+    tree = tmp_path / "repo"
+    tree.mkdir()
+    (tree / "index.json").write_text(
+        _json.dumps({"name": "tui-repo", "schema": 1, "categories": [{"id": "1.21.9", "path": "1.21.9"}]}),
+        encoding="utf-8",
+    )
+    category = tree / "1.21.9"
+    category.mkdir()
+    (category / "INDEX.json").write_text(
+        _json.dumps({"category": "1.21.9", "plugins": ["demo.market@88"]}),
+        encoding="utf-8",
+    )
+    plugin = category / "demo.market@88"
+    plugin.mkdir()
+    (plugin / "demo.market@88.py").write_text(plugin_py, encoding="utf-8")
+
+    with repo_server(tree) as base:
+        monkeypatch.setattr(market, "load_repos", lambda: [market.RepoSpec(name="tui", url=base)])
+
+        async def scenario() -> None:
+            app = DpCompatApp()
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                await pilot.press("p")
+                await pilot.pause()
+                await pilot.click("#plugins-market")
+                await pilot.pause()
+                assert isinstance(app.screen, MarketScreen)
+                # Wait for the loading worker to render the plugin row.
+                rows: list[Button] = []
+                for _ in range(40):
+                    await pilot.pause(0.1)
+                    rows = [button for button in app.screen.query(Button) if button.has_class("plugin-item")]
+                    if rows:
+                        break
+                assert any("Market Demo" in str(button.label) for button in rows)
+                # Open the detail page and install.
+                await pilot.click("#market-demo-market-88")
+                await pilot.pause(0.3)
+                assert isinstance(app.screen, MarketDetailScreen)
+                await pilot.click("#market-install")
+                for _ in range(40):
+                    await pilot.pause(0.1)
+                    if "demo.market@88" in {item.id for item in PluginStore().list_plugins()}:
+                        break
+                assert "demo.market@88" in {item.id for item in PluginStore().list_plugins()}
+                # Back on the marketplace, the row now carries the installed mark.
+                await pilot.press("escape")
+                await pilot.pause(0.3)
+                assert isinstance(app.screen, MarketScreen)
+                for _ in range(40):
+                    await pilot.pause(0.1)
+                    rows = [button for button in app.screen.query(Button) if button.has_class("plugin-item")]
+                    if (rows and "installed" in str(rows[0].label).lower()) or "已安装" in str(rows[0].label):
+                        break
+                assert "已安装" in str(rows[0].label) or "installed" in str(rows[0].label).lower()
+
+        _run(scenario())
+
+
 def test_scaffold_helper_round_trip(tmp_path: Path) -> None:
     root = tmp_path.resolve()  # canonical form; see test_config notes for the 8.3-name quirk
     created = scaffold_plugin_template("demo.template", root, subfolder=True)
     assert created.parent == root / "demo.template"
     assert created.is_file()
+
+
+def test_tui_language_switch_re_renders_and_persists(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DPCOMPAT_PLUGIN_DIR", str(tmp_path / "plugins"))
+    from dpcompat import i18n
+
+    # Redirect the preference file so the test never touches the real home directory.
+    monkeypatch.setattr(i18n, "PREFS_DIR", tmp_path)
+    monkeypatch.setattr(i18n, "PREFS_FILE", tmp_path / "prefs.toml")
+
+    async def scenario() -> None:
+        app = DpCompatApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert app.language == "zh-CN"
+            assert "数据包兼容性迁移" in str(app.screen.query_one("#main-title", Static).renderable)
+            assert "简体中文" in str(app.screen.query_one("#lang-switch", Button).label)
+
+            await pilot.press("l")  # cycle to English
+            await pilot.pause()
+            assert app.language == "en"
+            assert "Data-pack Compatibility Migration" in str(app.screen.query_one("#main-title", Static).renderable)
+            assert "English" in str(app.screen.query_one("#lang-switch", Button).label)
+            # The choice is persisted for the next launch.
+            assert i18n.load_preferred_language() == "en"
+
+            # Plugins re-render in the new language: open the manager and check a
+            # built-in row shows its localized name.
+            await pilot.press("p")
+            await pilot.pause()
+            assert "Plugin Manager" in str(app.screen.query_one(".screen-title", Static).renderable)
+            fold = app.screen.query_one("#fold-1-21-11", Button)
+            fold.scroll_visible(animate=False)
+            await pilot.pause()
+            await pilot.click("#fold-1-21-11")
+            await pilot.pause(0.3)
+            rows = [button for button in app.screen.query(Button) if button.has_class("plugin-item")]
+            labels = [str(row.label) for row in rows]
+            assert any("Gamerule registry renames" in label for label in labels)
+
+    _run(scenario())

@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.6.0] - 2026-08-16
+
+### Added
+
+- Plugin marketplace: DPCompat can browse, search, and install plugins from remote repositories (`dpcompat/market.py`). The official repository is built in (`https://raw.githubusercontent.com/Kingcxp/DPCompat-repo/main`), and users can register their own repositories with `dpcompat plugin repo add <name> <url>` — any static file server following the catalog contract works.
+- CLI marketplace commands: `plugin repo add/remove/list`, `plugin market list/show/install`, plus a `plugin template` command mirroring the TUI template flow.
+- TUI marketplace screen: search box, per-version category filter, plugin rows with installed marks, and a detail page with Markdown docs and an install action. Marketplace previews follow the TUI language (plugin `localizations`).
+- Official plugin repository at `github.com/Kingcxp/DPCompat-repo` ships two example plugins (Python + declarative) and a CI workflow that validates changed plugins with dpcompat's own plugin inspector and rule registry.
+
+### Fixed
+
+- TUI: plugin list and marketplace re-render on screen resume instead of relying on `push_screen` callbacks, which Textual only invokes on `dismiss` — returning from the plugin detail page or marketplace now reliably reflects installs, toggles, and uninstalls.
+- TUI: list re-renders await child removal before mounting, avoiding `DuplicateIds` when rows carry stable widget ids (the previous remove-and-mount-in-one-turn pattern raised whenever a list was re-rendered with existing rows).
+
+## [0.5.0] - 2026-08-16
+
+### Added
+
+- TUI localization: every user-facing string is now looked up through a translation table (`dpcompat/i18n.py`) with `zh-CN` and `en`; press `l` or click the top-bar language button to switch, the choice is persisted in `~/.dpcompat/prefs.toml`, and `DPCOMPAT_LANG` / `dpcompat tui --lang <code>` override it. All screens re-render in place, including localized footer key hints.
+- Plugin localization: `PLUGIN["localizations"]` may provide per-language `name`/`description`/`readme`; the TUI preview follows the current UI language. Built-in plugins ship English name/description/readme variants.
+- Plugin descriptions support Markdown: the detail page renders the description as Markdown when no `readme` is provided, and list rows strip Markdown to a plain hint.
+- `docs/agent/` — comprehensive development documentation for AI collaborators (architecture, conventions, migration rules, plugin system, TUI/i18n, testing, release).
+
+### Changed
+
+- Migration audit against official changelogs (1.21.5 → 26.2): rules confirmed correct; `worldborder warning time` now participates in the seconds↔ticks unit migration; `hide_additional_tooltip` is diagnosed instead of silently passing through; cooking recipe results with extra fields are flagged unknown on downgrade; `block_pos` migration extended to `painting`/`leash_knot`; dimension-type `default_clock`/`has_ender_dragon_fight` are blocked on downgrade.
+- Plugin development documentation moved from `docs/` to `plugin-development/PLUGIN_DEVELOPMENT.zh-CN.md`; the historical `docs/FROM_ZERO_FILE_BY_FILE.zh-CN.md` reconstruction guide was removed in favor of `docs/agent/`.
+- TUI: user-provided plugin text is Rich-markup-escaped in list rows and detail metadata; the build result line and language button label follow the active language.
+
+### Fixed
+
+- TUI: section header could show a duplicated separator after localization; language switch re-renders the open plugin detail page and the migration form without losing entered values.
+- TUI test: the output-subfolder validation test no longer depends on click coordinates (focus + Enter), removing a layout-size flake.
+
 ## [0.4.6] - 2026-08-06
 
 ### Added
