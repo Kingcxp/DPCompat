@@ -20,12 +20,46 @@ jobs:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
       - run: uv sync --locked --all-groups
-      - run: make check
-      - run: make smoke
-      - run: uv run dpcompat plan examples/simple_pack --target 1.21.4 --target 26.2
-      - run: uv run dpcompat build examples/simple_pack --target 1.21.4 --target 1.21.9 --target 26.2 --output dist
-      - run: python -m zipfile -t dist/datapack-universal-1.21.4-plus.zip
-      - run: uv build
+
+      - name: Lockfile is consistent with pyproject.toml
+        run: uv lock --check
+
+      - name: Formatting (ruff format --check)
+        run: uv run ruff format --check .
+
+      - name: Lint (ruff check)
+        run: uv run ruff check .
+
+      - name: Type checking (mypy --strict)
+        run: uv run mypy
+
+      - name: Type checking (pyright)
+        run: uv run pyright
+
+      - name: Unit tests
+        run: uv run pytest --cov=dpcompat --cov-report=term-missing
+
+      - name: Upload coverage report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.python-version }}
+          path: .coverage
+          if-no-files-found: warn
+
+      - name: CLI smoke (versions + inspect)
+        run: make smoke
+
+      - name: Plan a multi-target migration
+        run: uv run dpcompat plan examples/simple_pack --target 1.21.4 --target 26.2
+
+      - name: Build archives and validate the universal ZIP
+        run: |
+          uv run dpcompat build examples/simple_pack --target 1.21.4 --target 1.21.9 --target 26.2 --output dist
+          python -m zipfile -t dist/datapack-universal-1.21.4-plus.zip
+
+      - name: Package the distribution
+        run: uv build
 
   test-windows:
     runs-on: windows-latest
