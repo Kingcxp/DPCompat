@@ -390,3 +390,42 @@ def test_tui_language_switch_re_renders_and_persists(
             assert any("Gamerule registry renames" in label for label in labels)
 
     _run(scenario())
+
+
+def test_tui_starts_with_localized_bindings_in_english(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Boot with a persisted English preference; footers must not show Chinese."""
+
+    monkeypatch.setenv("DPCOMPAT_PLUGIN_DIR", str(tmp_path / "plugins"))
+    from dpcompat import i18n
+
+    monkeypatch.setattr(i18n, "PREFS_DIR", tmp_path)
+    monkeypatch.setattr(i18n, "PREFS_FILE", tmp_path / "prefs.toml")
+    i18n.save_preferred_language("en")
+
+    async def scenario() -> None:
+        app = DpCompatApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert app.language == "en"
+
+            def descriptions(widget: object) -> dict[str, str]:
+                return {key: active.binding.description for key, active in widget.active_bindings.items()}  # type: ignore[attr-defined]
+
+            # App shell: q quits, l cycles language — in English.
+            shell = descriptions(app)
+            assert shell["q"] == "Quit"
+            assert shell["l"] == "Language"
+            # Migration screen: p opens the plugin manager — in English.
+            screen = descriptions(app.screen)
+            assert screen["p"] == "Plugin Manager"
+
+            # Modal screens localize their escape binding on mount as well.
+            await pilot.press("p")
+            await pilot.pause()
+            plugins = descriptions(app.screen)
+            assert plugins["escape"] == "Back"
+
+    _run(scenario())

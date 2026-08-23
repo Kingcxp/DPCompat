@@ -150,13 +150,23 @@ class FilePickerScreen(LocalizedScreen, Screen[Path | None]):
                 yield Button(self._t("picker.cancel"), id="picker-cancel")
         yield Footer()
 
+    def _apply_bindings(self) -> None:
+        """Install footer bindings localized to the active language."""
+
+        self._set_bindings([Binding("escape", "cancel", self._t("picker.cancel"))])
+
+    def on_mount(self) -> None:
+        """Start with localized bindings instead of the class-level Chinese defaults."""
+
+        self._apply_bindings()
+
     def refresh_language(self) -> None:
         """Re-render localized labels after a language switch."""
 
         self.query_one("#picker-up", Button).label = self._t("picker.up")
         self.query_one("#picker-pick", Button).label = self._t("picker.pick")
         self.query_one("#picker-cancel", Button).label = self._t("picker.cancel")
-        self._set_bindings([Binding("escape", "cancel", self._t("picker.cancel"))])
+        self._apply_bindings()
 
     def _current(self) -> Path | None:
         tree = self.query_one("#picker-tree", DirectoryTree)
@@ -390,6 +400,16 @@ class PluginDetailScreen(LocalizedScreen, Screen[None]):
             yield from self._detail_widgets(info)
         yield Footer()
 
+    def _apply_bindings(self) -> None:
+        """Install footer bindings localized to the active language."""
+
+        self._set_bindings([Binding("escape", "app.pop_screen", self._t("plugin.back"))])
+
+    def on_mount(self) -> None:
+        """Start with localized bindings instead of the class-level Chinese defaults."""
+
+        self._apply_bindings()
+
     def refresh_language(self) -> None:
         """Rebuild the whole page with the newly selected language."""
 
@@ -397,7 +417,7 @@ class PluginDetailScreen(LocalizedScreen, Screen[None]):
         root.remove_children()
         for widget in self._detail_widgets(self._display_info()):
             root.mount(widget)
-        self._set_bindings([Binding("escape", "app.pop_screen", self._t("plugin.back"))])
+        self._apply_bindings()
 
     @on(Button.Pressed, "#detail-toggle")
     def _on_toggle(self) -> None:
@@ -452,6 +472,16 @@ class TemplateScreen(LocalizedScreen, Screen[Path | None]):
                 yield Button(self._t("template.cancel"), id="template-cancel")
         yield Footer()
 
+    def _apply_bindings(self) -> None:
+        """Install footer bindings localized to the active language."""
+
+        self._set_bindings([Binding("escape", "cancel", self._t("template.cancel"))])
+
+    def on_mount(self) -> None:
+        """Start with localized bindings instead of the class-level Chinese defaults."""
+
+        self._apply_bindings()
+
     def refresh_language(self) -> None:
         """Update labels after a language switch."""
 
@@ -460,7 +490,7 @@ class TemplateScreen(LocalizedScreen, Screen[Path | None]):
         self.query_one("#template-subfolder", Checkbox).label = self._t("template.subfolder")
         self.query_one("#template-create", Button).label = self._t("template.create")
         self.query_one("#template-cancel", Button).label = self._t("template.cancel")
-        self._set_bindings([Binding("escape", "cancel", self._t("template.cancel"))])
+        self._apply_bindings()
 
     def action_cancel(self) -> None:
         """Close the template screen without creating anything."""
@@ -517,6 +547,11 @@ class PluginsScreen(LocalizedScreen, Screen[None]):
                 yield Button(self._t("plugins.back"), id="plugins-back")
         yield Footer()
 
+    def _apply_bindings(self) -> None:
+        """Install footer bindings localized to the active language."""
+
+        self._set_bindings([Binding("escape", "app.pop_screen", self._t("plugins.back"))])
+
     def refresh_language(self) -> None:
         """Re-render headers and rebuild the list in the new language."""
 
@@ -525,13 +560,14 @@ class PluginsScreen(LocalizedScreen, Screen[None]):
         self.query_one("#plugins-template", Button).label = self._t("plugins.template")
         self.query_one("#plugins-refresh", Button).label = self._t("plugins.refresh")
         self.query_one("#plugins-back", Button).label = self._t("plugins.back")
-        self._set_bindings([Binding("escape", "app.pop_screen", self._t("plugins.back"))])
+        self._apply_bindings()
         self._refresh()
 
     def on_mount(self) -> None:
         """Load the plugin store; the list renders on screen resume."""
 
         self._store = PluginStore()
+        self._apply_bindings()
 
     def on_screen_resume(self) -> None:
         """Render (or re-render) the list whenever this screen becomes active.
@@ -699,6 +735,16 @@ class MarketScreen(LocalizedScreen, Screen[None]):
                 yield Button(self._t("market.back"), id="market-back")
         yield Footer()
 
+    def _apply_bindings(self) -> None:
+        """Install footer bindings localized to the active language."""
+
+        self._set_bindings([Binding("escape", "app.pop_screen", self._t("market.back"))])
+
+    def on_mount(self) -> None:
+        """Start with localized bindings instead of the class-level Chinese defaults."""
+
+        self._apply_bindings()
+
     def refresh_language(self) -> None:
         """Re-render labels and rebuild the list in the new language."""
 
@@ -708,8 +754,8 @@ class MarketScreen(LocalizedScreen, Screen[None]):
         self.query_one("#market-search-go", Button).label = self._t("market.search")
         self.query_one("#market-refresh", Button).label = self._t("market.refresh")
         self.query_one("#market-back", Button).label = self._t("market.back")
-        self._set_bindings([Binding("escape", "app.pop_screen", self._t("market.back"))])
         self.call_later(self._render_list)
+        self._apply_bindings()
 
     def on_screen_resume(self) -> None:
         """Load the marketplace whenever this screen becomes active.
@@ -901,6 +947,16 @@ class MarketDetailScreen(LocalizedScreen, Screen[None]):
             yield from self._detail_widgets(info)
         yield Footer()
 
+    def _apply_bindings(self) -> None:
+        """Install footer bindings localized to the active language."""
+
+        self._set_bindings([Binding("escape", "app.pop_screen", self._t("market.back"))])
+
+    def on_mount(self) -> None:
+        """Start with localized bindings instead of the class-level Chinese defaults."""
+
+        self._apply_bindings()
+
     def refresh_language(self) -> None:
         """Rebuild the whole page with the newly selected language."""
 
@@ -908,7 +964,8 @@ class MarketDetailScreen(LocalizedScreen, Screen[None]):
         root.remove_children()
         for widget in self._detail_widgets(self._display_info()):
             root.mount(widget)
-        self._set_bindings([Binding("escape", "app.pop_screen", self._t("market.back"))])
+
+        self._apply_bindings()
 
     @on(Button.Pressed, "#market-install")
     def _on_install(self) -> None:
@@ -1061,6 +1118,11 @@ class MigrationScreen(LocalizedScreen, Screen[None]):
     def _target_label(self, profile: VersionProfile) -> str:
         return self._t("migration.target_format", version=profile.game_version, format=str(profile.pack_format))
 
+    def _apply_bindings(self) -> None:
+        """Install footer bindings localized to the active language."""
+
+        self._set_bindings([Binding("p", "open_plugins", self._t("migration.plugins"))])
+
     def refresh_language(self) -> None:
         """Update every label in place after a language switch."""
 
@@ -1084,7 +1146,7 @@ class MigrationScreen(LocalizedScreen, Screen[None]):
         self.query_one("#policy-unknown", Checkbox).label = self._t("migration.policy_unknown")
         self.query_one("#policy-fail-warnings", Checkbox).label = self._t("migration.policy_fail_warnings")
         self.query_one("#build-start", Button).label = self._t("migration.build")
-        self._set_bindings([Binding("p", "open_plugins", self._t("migration.plugins"))])
+        self._apply_bindings()
 
         # Section titles, hints, and policy descriptions are addressed by stable ids.
         for widget_id, key in (
@@ -1120,6 +1182,8 @@ class MigrationScreen(LocalizedScreen, Screen[None]):
                 checkbox = self.query_one(f"#{_target_widget_id(profile.game_version)}", Checkbox)
                 checkbox.value = profile.game_version in selected
         self.query_one("#build-log", RichLog).write(f"[dim]{self._t('migration.log_hint')}[/dim]")
+
+        self._apply_bindings()
 
     def action_open_plugins(self) -> None:
         """Push the plugin management screen."""
@@ -1497,12 +1561,7 @@ class DpCompatApp(App[None]):
         with suppress(OSError):  # Read-only home directory must not break language switching.
             save_preferred_language(self._language)
         self.sub_title = self.tr("app.subtitle")
-        self._bindings = BindingsMap(
-            [
-                Binding("q", "quit", self.tr("app.quit")),
-                Binding("l", "cycle_language", self.tr("app.language")),
-            ]
-        )
+        self._apply_shell_bindings()
         self.notify(self.tr("app.language_switched", name=LANGUAGES[self._language]))
         for screen in self.screen_stack:
             refresh = getattr(screen, "refresh_language", None)
@@ -1516,4 +1575,15 @@ class DpCompatApp(App[None]):
         """Push the migration screen as the default view."""
 
         self.sub_title = self.tr("app.subtitle")
+        self._apply_shell_bindings()
         self.push_screen(MigrationScreen(self._config_path))
+
+    def _apply_shell_bindings(self) -> None:
+        """Install the global q/l bindings localized to the active language."""
+
+        self._bindings = BindingsMap(
+            [
+                Binding("q", "quit", self.tr("app.quit")),
+                Binding("l", "cycle_language", self.tr("app.language")),
+            ]
+        )
