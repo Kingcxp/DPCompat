@@ -28,6 +28,10 @@ permissions:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    # `secrets` is not available in step-level `if:` expressions; mirror the
+    # token presence into an env var so the steps below can branch on it.
+    env:
+      HAS_WIKI_TOKEN: ${{ secrets.WIKI_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -36,7 +40,7 @@ jobs:
         run: uv run python scripts/sync_wiki.py --output "$RUNNER_TEMP/wiki-staging"
 
       - name: Push to the wiki repository
-        if: ${{ secrets.WIKI_TOKEN != '' }}
+        if: ${{ env.HAS_WIKI_TOKEN == 'true' }}
         env:
           WIKI_TOKEN: ${{ secrets.WIKI_TOKEN }}
         run: |
@@ -56,7 +60,7 @@ jobs:
           fi
 
       - name: Warn when the wiki token is missing
-        if: ${{ secrets.WIKI_TOKEN == '' }}
+        if: ${{ env.HAS_WIKI_TOKEN != 'true' }}
         run: |
           echo "::warning::WIKI_TOKEN is not configured; the wiki sync step was skipped. \
           Create a personal access token with repo scope and add it as a repository secret."

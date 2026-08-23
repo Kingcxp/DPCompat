@@ -26,6 +26,10 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # `secrets` is not available in step-level `if:` expressions; mirror the
+    # token presence into an env var so the steps below can branch on it.
+    env:
+      HAS_PYPI_TOKEN: ${{ secrets.PYPI_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -47,14 +51,14 @@ jobs:
           generate_release_notes: true
 
       - name: Publish to PyPI
-        if: ${{ secrets.PYPI_TOKEN != '' }}
+        if: ${{ env.HAS_PYPI_TOKEN == 'true' }}
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.PYPI_TOKEN }}
           skip-existing: true # tolerate re-runs of an already published tag
 
       - name: Warn when the PyPI token is missing
-        if: ${{ secrets.PYPI_TOKEN == '' }}
+        if: ${{ env.HAS_PYPI_TOKEN != 'true' }}
         run: |
           echo "::warning::PYPI_TOKEN is not configured; the PyPI publish step was skipped. \
           Create an API token on PyPI and add it as a repository secret."
