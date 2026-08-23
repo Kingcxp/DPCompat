@@ -1,5 +1,24 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- TUI: a "Detect source" action runs the pack detector without building targets, reporting the inferred format, candidates, and evidence diagnostics; a plan-only checkbox evaluates every target without writing ZIPs (`emit_archives=False`).
+- TUI: build controls are disabled with a localized running label while a worker owns them, and the completion notification now distinguishes all-success from partial failure. `compatibility-report.json` is written next to the output on real builds instead of only being promised in the log.
+- CLI: `dpcompat plugin market search QUERY` is a first-class alias of `plugin market list --query QUERY`, matching the plugin-development documentation.
+
+### Changed
+
+- Migration coverage: downgrading `click_event` actions `custom`/`show_dialog` (introduced with format 80 / 1.21.6) now fails closed instead of silently emitting events older releases cannot parse; `/test` (format 71) and the world-clock `/time of|pause|resume|rate` forms plus `query <timeline>` (format 101.1) are registered as command-too-new evidence in `features.json`/scanner.
+- Marketplace installs verify that the downloaded file declares the requested plugin id before writing it into the store; broken catalog entries are skipped with a warning instead of hiding the whole repository or disappearing silently.
+
+### Fixed
+
+- TUI: footer key hints no longer start in Chinese when the persisted preference is English; every screen installs bindings localized to the active language on mount.
+- CI: `wiki.yml`/`release.yml` used the `secrets` context inside step-level `if:` expressions, which GitHub rejects at validation — both workflows failed with zero jobs since their introduction. Token presence is now mirrored through a job-level env var.
+- CI: `ruff format --check` passes again with ruff 0.16, which now formats fenced Python blocks in Markdown documents.
+
 ## [0.6.0] - 2026-08-16
 
 ### Added
