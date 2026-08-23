@@ -5,10 +5,11 @@ description).  Built-in plugins are the default rule groups; users can install
 additional Python or declarative JSON plugin files from the CLI or the TUI, and
 toggle any plugin on or off.  Disabled plugins contribute no rules to builds.
 
-The store directory is resolved from ``DPCOMPAT_PLUGIN_DIR`` when set, otherwise
-``~/.dpcompat/plugins``.  Enable state lives in ``plugins.toml`` inside that
-directory; only disabled plugins are listed there, so a missing entry means
-``enabled = true``.
+The store directory is resolved from ``DPCOMPAT_PLUGIN_DIR`` when set, otherwise it
+is the ``plugins`` folder next to the installed package
+(``site-packages/dpcompat/plugins``), so separate Python environments stay isolated.
+Enable state lives in ``plugins.toml`` inside that directory; only disabled plugins
+are listed there, so a missing entry means ``enabled = true``.
 """
 
 from __future__ import annotations

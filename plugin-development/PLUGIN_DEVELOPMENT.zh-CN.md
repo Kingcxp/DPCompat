@@ -79,7 +79,7 @@ RULES = (DemoRenameRule(),)
 - `PLUGIN["localizations"]` 可选：键为语言代码（与 TUI 语言一致，如 `"en"`），值为 `{"name", "description", "readme"}`。TUI 预览跟随界面语言自动选择；语言缺失或 `readme` 为空时回退到顶层字段；
 - 必须暴露 `RULES` 或 `dpcompat_rules()`；
 - 每条规则的 `id` 稳定唯一，与内置规则不冲突；
-- 每条规则要么自带 `official_sources`（HTTP(S) 一手来源），要么由 `PLUGIN["official_sources"]` 统一提供——注册表拒绝无来源规则；
+- 每条规则要么自带 `official_sources`（HTTP(S) 一手来源），Python 规则也可以由 `PLUGIN["official_sources"]` 统一提供；JSON 声明式规则必须逐条自带——注册表拒绝无来源规则；
 - 保持模块无副作用：插件文件会被加载多次（安装时校验 + 构建时注册），不要在模块顶层执行 I/O 或修改全局状态。
 
 规则协议与安全要求的完整说明见 [`RULE_AUTHORING.zh-CN.md`](../docs/RULE_AUTHORING.zh-CN.md) 与 [`SAFETY_MODEL.zh-CN.md`](../docs/SAFETY_MODEL.zh-CN.md)。

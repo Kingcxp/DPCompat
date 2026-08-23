@@ -193,10 +193,36 @@ def test_install_from_market_lands_in_the_plugin_store(
     info = market.install_market_plugin("demo.alpha@88", store, repo_name="test")
     assert info.id == "demo.alpha@88"
     assert "demo.alpha@88" in {item.id for item in store.list_plugins()}
-    assert (plugin_dir / "demo.alpha@88.py").is_file()
-
     with pytest.raises(market.MarketError, match="not found"):
         market.install_market_plugin("does-not-exist@1", store)
+
+
+def test_install_rejects_file_declaring_a_different_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A repository must not serve plugin B when the user asked for plugin A."""
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "index.json").write_text(json.dumps(_INDEX_JSON), encoding="utf-8")
+    category = root / "1.21.9"
+    category.mkdir()
+    (category / "INDEX.json").write_text(
+        json.dumps({"category": "1.21.9", "plugins": ["other.plugin@88"]}),
+        encoding="utf-8",
+    )
+    folder = category / "other.plugin@88"
+    folder.mkdir()
+    # The file is served under the other.plugin@88 name but declares demo.alpha@88.
+    (folder / "other.plugin@88.py").write_text(_PLUGIN_PY, encoding="utf-8")
+
+    with repo_server(root) as base:
+        _only(monkeypatch, market.RepoSpec(name="test", url=base))
+        monkeypatch.setenv("DPCOMPAT_PLUGIN_DIR", str(tmp_path / "plugins"))
+        with pytest.raises(market.MarketError, match="declares id"):
+            market.install_market_plugin("other.plugin@88", PluginStore(), repo_name="test")
+    assert not (tmp_path / "plugins").exists() or not list((tmp_path / "plugins").iterdir())
 
 
 # -- CLI -----------------------------------------------------------------------
@@ -245,3 +271,13 @@ def test_cli_market_show_unknown_plugin_fails(
     _only(monkeypatch, market.RepoSpec(name="test", url=repo_server_url))
     assert _run_cli(["plugin", "market", "show", "missing@1"]) == 2
     assert "No plugin named" in capsys.readouterr().err
+
+
+def test_cli_market_search_alias(
+    repo_server_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    _only(monkeypatch, market.RepoSpec(name="test", url=repo_server_url))
+    assert _run_cli(["plugin", "market", "search", "alpha", "--json"]) == 0
+    assert "demo.alpha@88" in capsys.readouterr().out

@@ -16,7 +16,9 @@ plugins land.
 from __future__ import annotations
 
 import json
+import logging
 import os
+import tempfile
 import tomllib
 import urllib.error
 import urllib.request
@@ -28,6 +30,8 @@ from pydantic import Field
 
 from .models import FrozenModel
 from .plugins import PluginInfo, PluginStore
+
+logger = logging.getLogger(__name__)
 
 REPOS_FILE_ENV = "DPCOMPAT_REPOS_FILE"
 DEFAULT_REPO_NAME = "official"
@@ -250,8 +254,6 @@ def _fetch_market_meta(repo: RepoSpec, category: CategoryInfo, plugin_id: str) -
 def inspect_plugin_file(data: bytes, suffix: str, *, source: str) -> PluginInfo:
     """Inspect a downloaded plugin file with the same machinery as local installs."""
 
-    import tempfile
-
     with tempfile.TemporaryDirectory(prefix="dpcompat-market-") as temp_dir:
         path = Path(temp_dir) / f"plugin{suffix}"
         path.write_bytes(data)
@@ -286,9 +288,12 @@ def _catalog_entries(repo: RepoSpec) -> list[tuple[CategoryInfo, str, PluginInfo
         for plugin_id in index.plugins:
             try:
                 data, suffix = _fetch_plugin_bytes(repo, category, plugin_id)
-            except MarketError:
+                info = inspect_plugin_file(data, suffix, source=f"{repo.name}/{plugin_id}")
+            except MarketError as exc:
+                # One broken entry must not hide the rest of the repository, but
+                # it must not disappear silently either.
+                logger.warning("Skipping market plugin %s/%s/%s: %s", repo.name, category.path, plugin_id, exc)
                 continue
-            info = inspect_plugin_file(data, suffix, source=f"{repo.name}/{plugin_id}")
             entries.append((category, plugin_id, info, _fetch_market_meta(repo, category, plugin_id)))
     return entries
 
@@ -354,13 +359,16 @@ def install_market_plugin(plugin_id: str, store: PluginStore, *, repo_name: str 
     errors: list[str] = []
     for repo in repos:
         try:
-            plugin = _find_in_repo(repo, plugin_id)
+            located = _find_in_repo(repo, plugin_id)
         except MarketError as exc:
             errors.append(str(exc))
             continue
-        data, suffix = _fetch_plugin_bytes(repo, plugin.cat, plugin_id)
-        import tempfile
-
+        data, suffix = _fetch_plugin_bytes(repo, located.cat, plugin_id)
+        # Verify the downloaded file really is the requested plugin before the
+        # install writes it under a different id than the user asked for.
+        info = inspect_plugin_file(data, suffix, source=f"{repo.name}/{plugin_id}")
+        if info.id != plugin_id:
+            raise MarketError(f"{repo.name}/{plugin_id}: downloaded file declares id {info.id!r}")
         with tempfile.TemporaryDirectory(prefix="dpcompat-market-") as temp_dir:
             path = Path(temp_dir) / f"plugin{suffix}"
             path.write_bytes(data)

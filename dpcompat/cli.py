@@ -659,6 +659,15 @@ def build_parser() -> argparse.ArgumentParser:
     market_list.add_argument("--json", action="store_true")
     market_list.set_defaults(handler=_command_market_list)
 
+    market_search = market_subparsers.add_parser(
+        "search", help="Search plugins across repositories (alias of 'list --query')"
+    )
+    market_search.add_argument("query", help="Search id, name, description, tags, or target version")
+    market_search.add_argument("--repo", help="Restrict to one repository by name")
+    market_search.add_argument("--category", help="Restrict to one category id")
+    market_search.add_argument("--json", action="store_true")
+    market_search.set_defaults(handler=_command_market_list)
+
     market_show = market_subparsers.add_parser("show", help="Show one plugin's details and Markdown documentation")
     market_show.add_argument("plugin_id")
     market_show.add_argument("--repo", help="Restrict to one repository by name")
