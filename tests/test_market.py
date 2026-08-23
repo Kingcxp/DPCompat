@@ -53,9 +53,7 @@ RULES = (AlphaRule(),)
 _INDEX_JSON = {
     "name": "test-repo",
     "schema": 1,
-    "categories": [
-        {"id": "1.21.9", "path": "1.21.9", "display_name": "1.21.9 / 1.21.10"}
-    ],
+    "categories": [{"id": "1.21.9", "path": "1.21.9", "display_name": "1.21.9 / 1.21.10"}],
 }
 
 

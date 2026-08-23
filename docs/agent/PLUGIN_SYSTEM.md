@@ -14,13 +14,13 @@
 
 ```python
 PLUGIN = {
-    "id": "my-pack-rules@94.1",       # 必填 [a-z0-9._@-]
-    "name": "...",                     # 必填，去首尾空格
-    "description": "...",              # 必填；支持 Markdown（TUI 详情页渲染）
+    "id": "my-pack-rules@94.1",  # 必填 [a-z0-9._@-]
+    "name": "...",  # 必填，去首尾空格
+    "description": "...",  # 必填；支持 Markdown（TUI 详情页渲染）
     "version": "1.0.0",
-    "target_version": "1.21.11",       # 必填，必须已在 releases.json 注册
-    "readme": "...",                   # 可选 Markdown 文档
-    "localizations": {                 # 可选多语言
+    "target_version": "1.21.11",  # 必填，必须已在 releases.json 注册
+    "readme": "...",  # 可选 Markdown 文档
+    "localizations": {  # 可选多语言
         "en": {"name": "...", "description": "...", "readme": "..."},
     },
     "official_sources": ["https://..."],  # 规则无自带来源时兜底

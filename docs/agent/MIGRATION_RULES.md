@@ -6,9 +6,9 @@
 
 ```python
 class SomeRule:
-    id = "example.change@94.1"          # 全局唯一，小写 [a-z0-9._@-]
-    boundary = PackFormat(94, 1)        # 语义首次进入支持正式版的 pack format
-    priority = 450                       # registry 排序；100+ 内置，500 声明式
+    id = "example.change@94.1"  # 全局唯一，小写 [a-z0-9._@-]
+    boundary = PackFormat(94, 1)  # 语义首次进入支持正式版的 pack format
+    priority = 450  # registry 排序；100+ 内置，500 声明式
 
     def applies(self, source: PackFormat, target: PackFormat) -> bool:
         return crosses(source, target, self.boundary)

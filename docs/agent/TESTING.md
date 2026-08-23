@@ -28,7 +28,7 @@
 
 ```python
 with tempfile.TemporaryDirectory() as temp_dir:
-    root = make_pack(Path(temp_dir), 61)               # pack_format 或 [major, minor]
+    root = make_pack(Path(temp_dir), 61)  # pack_format 或 [major, minor]
     write(root, "data/demo/function/test.mcfunction", "gamerule doFireTick true\n")
     rule = GameRuleRegistryRule()
     result = rule.apply(MigrationContext(root, PackFormat(61), PackFormat(94, 1), BuildPolicy()))
