@@ -106,6 +106,14 @@ class TextComponentTests(unittest.TestCase):
         with self.assertRaises(TextComponentMigrationError):
             upgrade_component({"clickEvent": {"action": "run_command"}, "click_event": {"action": "open_url"}})  # type: ignore[call-overload]
 
+    def test_custom_click_action_cannot_downgrade(self) -> None:
+        with self.assertRaises(TextComponentMigrationError):
+            downgrade_component({"click_event": {"action": "custom", "id": "minecraft:boom"}})
+
+    def test_show_dialog_click_action_cannot_downgrade(self) -> None:
+        with self.assertRaises(TextComponentMigrationError):
+            downgrade_component({"click_event": {"action": "show_dialog", "dialog": "minecraft:info"}})
+
 
 class EntityDataTests(unittest.TestCase):
     def test_equipment_upgrade_merges_legacy_lists(self) -> None:
@@ -217,6 +225,23 @@ class TextComponentRuleTests(unittest.TestCase):
                 {"macro-component-needs-runtime-parse"},
             )
             self.assertTrue(all(item.severity == Severity.ERROR for item in diagnostics))
+
+    def test_custom_click_action_json_downgrade_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [80, 0])
+            raw = (
+                '{"function":"minecraft:set_name","entity":"this","name":'
+                '{"text":"x","click_event":{"action":"custom","id":"minecraft:boom"}}}\n'
+            )
+            write(root, "data/demo/item_modifier/test.json", raw)
+            diagnostics = self._run(root, 80, 61)
+            self.assertEqual(
+                {item.code for item in diagnostics},
+                {"text-component-json-failed"},
+            )
+            self.assertEqual({item.compatibility for item in diagnostics}, {Compatibility.UNSUPPORTED})
+            # The unrepresentable file is left untouched instead of half-migrated.
+            self.assertEqual((root / "data/demo/item_modifier/test.json").read_text(encoding="utf-8"), raw)
 
 
 class ItemTooltipRuleTests(unittest.TestCase):

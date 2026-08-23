@@ -152,6 +152,13 @@ def _downgrade_node(value: Any) -> Any:
     click = result.get("clickEvent")
     if isinstance(click, dict):
         action = click.get("action")
+        if action in {"custom", "minecraft:custom", "show_dialog", "minecraft:show_dialog"}:
+            # Both actions were introduced with data-pack format 80 (1.21.6) and have
+            # no representation in earlier releases, so they cannot survive a downgrade.
+            raise TextComponentMigrationError(
+                f"click_event action '{action}' requires data-pack format 80 (1.21.6) "
+                "and has no equivalent in earlier releases",
+            )
         source = (
             {
                 "open_url": "url",

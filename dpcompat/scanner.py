@@ -208,6 +208,37 @@ def _scan_command(
                     )
                     if diagnostic:
                         diagnostics.append(diagnostic)
+        if (
+            len(segment_values) >= 3
+            and segment_values[0] == "time"
+            and segment_values[1] == "query"
+            and segment_values[2] not in {"day", "daytime", "gametime"}
+        ):
+            # ``/time query`` accepts arbitrary World Clock timelines only since
+            # format 101.1; the legacy subcommand knows exactly three literals.
+            minimum = PackFormat(101, 1)
+            inferred = _record_evidence(
+                evidence,
+                inferred,
+                kind="command",
+                value="time query <timeline>",
+                minimum=minimum,
+                weight=0.95,
+                path=relative,
+                line=line_number,
+            )
+            diagnostic = _feature_diagnostic(
+                code="command-too-new",
+                message=f"/time query for World Clock timelines requires data-pack format {minimum} or newer",
+                minimum=minimum,
+                target=target,
+                path=relative,
+                line=line_number,
+                feature_id="tiny_takeover_resources",
+                source_url="https://www.minecraft.net/en-us/article/minecraft-java-edition-26-1",
+            )
+            if diagnostic:
+                diagnostics.append(diagnostic)
 
     for identifier, (minimum, spec) in identifier_minimums().items():
         if not any(identifier in token.value for token in parsed.tokens):

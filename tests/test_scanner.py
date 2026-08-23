@@ -24,6 +24,44 @@ class ScannerTests(unittest.TestCase):
             scan = scan_pack(root)
             self.assertEqual(scan.inferred_format, PackFormat(88))
 
+    def test_test_command_requires_format_71(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(root, "data/demo/function/test.mcfunction", "test minecraft:demo {}\n")
+            scan = scan_pack(root, target=PackFormat(61))
+            self.assertEqual(scan.inferred_format, PackFormat(71))
+            self.assertTrue(any(item.code == "command-too-new" for item in scan.diagnostics))
+
+    def test_world_clock_time_forms_require_format_101_1(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(
+                root,
+                "data/demo/function/test.mcfunction",
+                "time of minecraft:overworld set day\ntime pause\ntime resume\ntime rate 2\n",
+            )
+            scan = scan_pack(root, target=PackFormat(94, 1))
+            codes = [item.code for item in scan.diagnostics]
+            self.assertEqual(codes.count("command-too-new"), 4)
+
+    def test_time_query_timeline_requires_format_101_1(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(root, "data/demo/function/test.mcfunction", "time query minecraft:festival\n")
+            scan = scan_pack(root, target=PackFormat(94, 1))
+            self.assertTrue(any(item.code == "command-too-new" for item in scan.diagnostics))
+
+    def test_legacy_time_forms_pass_old_targets(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(
+                root,
+                "data/demo/function/test.mcfunction",
+                "time set day\ntime add 100\ntime query daytime\ntime query gametime\n",
+            )
+            scan = scan_pack(root, target=PackFormat(61))
+            self.assertFalse(any(item.code == "command-too-new" for item in scan.diagnostics))
+
     def test_environment_attributes_refuse_old_target(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = make_pack(Path(temp_dir), [94, 1])

@@ -28,10 +28,10 @@ class SomeRule:
 | 边界 | 官方变更（一手来源） | 本仓库规则 |
 | --- | --- | --- |
 | 61 → 71（1.21.5） | 文本组件 clickEvent/hoverEvent → snake_case + action 专用字段；show_text `contents`→`value`；show_item/show_entity contents 内联（id→uuid、type→id）；实体 ArmorItems/HandItems/body_armor_item → `equipment`（slots: head/chest/legs/feet/mainhand/offhand/body/saddle），SaddleItem/布尔 Saddle → equipment.saddle；ArmorDropChances/HandDropChances/body_armor_drop_chance → drop_chances（默认 0.085f）；FallDistance→fall_distance；SleepingX/Y/Z→sleeping_pos；TileX/Y/Z→block_pos（item_frame/glow_item_frame/painting/leash_knot）；phantom Size→size、AX/AY/AZ→anchor_pos；player Spawn*/SpawnAngle/SpawnDimension/SpawnForced→respawn、enteredNetherPosition→entered_nether_pos；tooltip_display={hide_tooltip,hidden_components} 取代 hide_tooltip/hide_additional_tooltip/show_in_tooltip；attribute_modifiers→modifiers、dyed_color→rgb、can_place_on/can_break→predicates、enchantments/stored_enchantments→levels 内联；item 命令槽位 horse.saddle→saddle | `text.py`、`items.py`、`entities.py`、`structures.py`、`commands.py`(HorseSaddleSlotRule)、`entity_data.py`、`text_components.py` |
-| 71 → 80（1.21.6） | 所有 JSON 严格模式解析 | `strict_json.py`（归一化 + 重复 key 拒绝） |
+| 71 → 80（1.21.6） | 所有 JSON 严格模式解析 | `strict_json.py`（归一化 + 重复 key 拒绝）；`click_event` 的 `custom`/`show_dialog` 动作降级直接失败关闭（`text_components.py`，两动作均为 25w20a 新增） |
 | 80/81 → 88（1.21.9） | pack.mcmeta 用 `min_format`/`max_format`（`[major, minor]`）取代 pack_format/supported_formats（<82 仍需要旧字段）；`chain`→`iron_chain` 硬改名；spawnpoint/setworldspawn 新增可选 pitch（yaw=angle 早已存在） | `identifiers.py`、`commands.py`(SpawnRotationRule)、`metadata.py`、`models.PackFormat` |
 | 88 → 94.1（1.21.11） | 全部 gamerule 改 namespaced snake_case，含特殊改名表与 3 条反义规则（disableElytraMovementCheck→elytra_movement_check、disablePlayerMovementCheck→player_movement_check、disableRaids→raids）；doFireTick/allowFireTicksAwayFromPlayer 移除 → fire_spread_radius_around_player；worldborder set/add/warning time 时间参数秒→tick（s/d 后缀）；filtered.modifier→on_pass（新增 on_fail）；Environment Attributes（dimension/biome 的 attributes、timelines、skybox、cardinal_light、has_fixed_time） | `gamerules.py`（含完整特殊改名表）、`worldborder.py`、`resources.py`(FilteredLootRule)、`scanner.py`（环境属性阻断） |
-| 94.1 → 101.1（26.1） | world clock 注册表（data/ns/world_clock/）；/time [of clock]；timeline 文件 + clock 字段；time_check + clock；test_environment time_of_day→clock_time{clock,time}；dimension_type + default_clock/has_ender_dragon_fight；配方：result 短形式字符串、烹饪类 result 支持 count、stonecutting/smithing 移除 group、show_notification 扩展到多类型、crafting_dye/crafting_imbue 新增、crafting_special_mapcloning 移除（并入 crafting_transmute）、transmute + material_count/add_material_count_to_result | `resources.py`(TimelineClockRule/TestEnvironmentClockRule)、`recipes.py`(Recipe26Rule/TimeCheckClockRule)、`scanner.py`（default_clock 阻断） |
+| 94.1 → 101.1（26.1） | world clock 注册表（data/ns/world_clock/）；/time [of clock]；timeline 文件 + clock 字段；time_check + clock；test_environment time_of_day→clock_time{clock,time}；dimension_type + default_clock/has_ender_dragon_fight；配方：result 短形式字符串、烹饪类 result 支持 count、stonecutting/smithing 移除 group、show_notification 扩展到多类型、crafting_dye/crafting_imbue 新增、crafting_special_mapcloning 移除（并入 crafting_transmute）、transmute + material_count/add_material_count_to_result | `resources.py`(TimelineClockRule/TestEnvironmentClockRule)、`recipes.py`(Recipe26Rule/TimeCheckClockRule)、`scanner.py`（default_clock 阻断）；`features.json` 登记了 `time of/pause/resume/rate` 前缀、scanner 另拦 `query <timeline>`（旧字面量仅 day/daytime/gametime） |
 | 101.1 → 107.1（26.2） | sulfur_cube_archetype 注册表；实体谓词改组件映射风格；HurtByTimestamp 移除 | `scanner.py`（resource-too-new 阻断）、`features.json` |
 
 上表是 2026-08 复核结果（对照 minecraft.wiki 与 Mojang 正式版说明）。**新增规则前必须重新查证**，流程见下文。
@@ -65,7 +65,9 @@ class SomeRule:
 ## 已知缺口（2026-08 复核，未修，勿静默扩 scope）
 
 - `show_item` hover 事件旧格式的 `text` 字段（1.21.5 改名 value）未处理——罕见，失败方式为遗留字段。
-- 26.2 实体谓词新格式（组件映射风格）未检测，降级时可能静默残留——属"保守特征清单"边界。
+- 26.2 实体谓词新格式（组件映射风格）未检测，降级时可能静默残留；HurtByTimestamp 移除未出诊断（NBT 对多余/缺失字段宽容，残留无行为影响）。两者已在 `docs/VERSION_MATRIX.md` 26.2 行对外标注。
+- `/time set/add` 在 26.1 的返回值语义变化（总流逝 tick 而非当日时间）影响 `execute store` 消费方，语法层无法静态判定，未出诊断。
 - 烹饪配方 result 含 id/count 以外字段 → 已加 `cooking-result-fields-cannot-downgrade`（UNKNOWN）。
 - 旧版 `hide_additional_tooltip` 组件 → 已加 `hide-additional-tooltip-cannot-upgrade`（UNKNOWN）。
+- 已修复：`click_event` 的 `custom`/`show_dialog` 动作降级现于 `text_components.py` 失败关闭；`/test`、`time of/pause/resume/rate/query <timeline>` 已登记最小格式。
 - 新增规则前复查这些是否已成为常见输入。

@@ -11,6 +11,9 @@
         "test_environment",
         "test_instance"
       ],
+      "commands": [
+        "test"
+      ],
       "downgrade": "unsupported",
       "source": "https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-5"
     },
@@ -82,7 +85,11 @@
         "chicken_sound_variant"
       ],
       "commands": [
-        "swing"
+        "swing",
+        "time of",
+        "time pause",
+        "time resume",
+        "time rate"
       ],
       "downgrade": "unsupported",
       "source": "https://www.minecraft.net/en-us/article/minecraft-java-edition-26-1",
