@@ -197,6 +197,26 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "zh-CN": "子文件夹名称只能包含字母、数字、'.'、'_'、'-'",
         "en": "Subfolder name may only contain letters, digits, '.', '_', '-'",
     },
+    "migration.detect": {"zh-CN": "检测来源", "en": "Detect source"},
+    "migration.detect_running": {"zh-CN": "检测中…", "en": "Detecting…"},
+    "migration.build_running": {"zh-CN": "迁移中…", "en": "Migrating…"},
+    "migration.pack_missing": {
+        "zh-CN": "数据包路径不存在：{path}",
+        "en": "Data pack path does not exist: {path}",
+    },
+    "migration.plan_only": {"zh-CN": "仅规划（不写出 ZIP）", "en": "Plan only (no ZIP output)"},
+    "migration.plan_note": {
+        "zh-CN": "仅规划模式：已评估所有目标，但未写出 ZIP。",
+        "en": "Plan-only mode: every target was evaluated, but no ZIP was written.",
+    },
+    "migration.build_summary_ok": {
+        "zh-CN": "构建完成：{count} 个目标全部成功。",
+        "en": "Build finished: all {count} targets succeeded.",
+    },
+    "migration.build_summary_partial": {
+        "zh-CN": "构建完成：{ok} 个目标成功，{failed} 个失败；详情见日志与报告。",
+        "en": "Build finished: {ok} target(s) succeeded, {failed} failed; see the log and the report.",
+    },
     # -- application shell --------------------------------------------------------
     "app.subtitle": {"zh-CN": "数据包兼容性迁移工具", "en": "Data-pack compatibility migration tool"},
     "app.quit": {"zh-CN": "退出", "en": "Quit"},

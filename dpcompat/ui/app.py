@@ -46,6 +46,7 @@ from textual.widgets import (
 )
 
 from ..config import ProjectConfig, load_config
+from ..detector import detect_pack
 from ..engine import compile_pack
 from ..i18n import LANGUAGES, save_preferred_language, tr
 from ..market import (
@@ -63,6 +64,7 @@ from ..plugins import (
     create_effective_registry,
     scaffold_plugin_template,
 )
+from ..report import build_report, write_report
 from ..versions import PROFILES
 
 _SUBFOLDER_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -1012,6 +1014,7 @@ class MigrationScreen(LocalizedScreen, Screen[None]):
         super().__init__()
         self._config_path = config_path
         self._config: ProjectConfig | None = None
+        self._busy = False
 
     def compose(self) -> ComposeResult:
         """Render the migration form: pack, output, targets, policy, and log."""
@@ -1111,6 +1114,8 @@ class MigrationScreen(LocalizedScreen, Screen[None]):
             yield Static(self._t("migration.policy_hint"), classes="hint", id="policy-hint")
             with Horizontal(classes="button-row"):
                 yield Button(self._t("migration.build"), id="build-start", variant="success")
+                yield Button(self._t("migration.detect"), id="detect-source")
+                yield Checkbox(self._t("migration.plan_only"), id="plan-only", classes="-textual-compact")
             yield Static(self._t("migration.log_section"), classes="section-title", id="log-section")
             yield RichLog(id="build-log", markup=True, wrap=True, highlight=True)
         yield Footer()
@@ -1146,6 +1151,9 @@ class MigrationScreen(LocalizedScreen, Screen[None]):
         self.query_one("#policy-unknown", Checkbox).label = self._t("migration.policy_unknown")
         self.query_one("#policy-fail-warnings", Checkbox).label = self._t("migration.policy_fail_warnings")
         self.query_one("#build-start", Button).label = self._t("migration.build")
+        self.query_one("#detect-source", Button).label = self._t("migration.detect")
+        self.query_one("#plan-only", Checkbox).label = self._t("migration.plan_only")
+        self._sync_busy_controls()
         self._apply_bindings()
 
         # Section titles, hints, and policy descriptions are addressed by stable ids.
@@ -1274,11 +1282,87 @@ class MigrationScreen(LocalizedScreen, Screen[None]):
     def _on_quit(self) -> None:
         self.app.exit()
 
-    @on(Button.Pressed, "#build-start")
-    def _on_build_start(self) -> None:
+    def _sync_busy_controls(self) -> None:
+        """Reflect the busy state on the build/detect controls."""
+
+        build = self.query_one("#build-start", Button)
+        build.disabled = self._busy
+        build.label = self._t("migration.build_running" if self._busy else "migration.build")
+        detect = self.query_one("#detect-source", Button)
+        detect.disabled = self._busy
+        detect.label = self._t("migration.detect_running" if self._busy else "migration.detect")
+
+    def _begin_busy(self) -> None:
+        """Claim the build/detect controls (main thread only)."""
+
+        self._busy = True
+        self._sync_busy_controls()
+
+    def _end_busy(self) -> None:
+        """Release the build/detect controls (worker threads hand this back)."""
+
+        self._busy = False
+        self._sync_busy_controls()
+
+    def _validated_pack_path(self) -> str | None:
+        """Return the entered pack path, or notify the user about the problem."""
+
         pack_path = self.query_one("#pack-path-input", Input).value.strip()
         if not pack_path:
             self.notify(self._t("migration.need_pack"), severity="error")
+            return None
+        if not Path(pack_path).exists():
+            self.notify(self._t("migration.pack_missing", path=pack_path), severity="error")
+            return None
+        return pack_path
+
+    @on(Button.Pressed, "#detect-source")
+    def _on_detect(self) -> None:
+        """Inspect the source pack without building any target."""
+
+        pack_path = self._validated_pack_path()
+        if pack_path is None:
+            return
+        log = self.query_one("#build-log", RichLog)
+        log.clear()
+        self._begin_busy()
+        self.run_worker(self._detect_task(log, pack_path), thread=True, exclusive=True, group="detect")
+
+    async def _detect_task(self, log: RichLog, pack_path: str) -> None:
+        """Detection-only worker: report source format, candidates, and evidence."""
+
+        app = self.app
+
+        def write(line: str) -> None:
+            app.call_from_thread(log.write, line)
+
+        write(f"[bold cyan]{app.tr('migration.detect_running')}[/bold cyan]")
+        try:
+            with materialize_source(Path(pack_path)) as root:
+                detection = detect_pack(root)
+        except Exception as exc:  # Surface any failure in the log instead of crashing the UI.
+            message = app.tr("migration.build_failed", error=exc)
+            write(f"[bold red]{escape(message)}[/bold red]")
+            app.call_from_thread(self.notify, message, severity="error")
+            return
+        finally:
+            # The app may be shutting down while a build is still running.
+            with suppress(RuntimeError):
+                self.app.call_from_thread(self._end_busy)
+        write(
+            app.tr(
+                "migration.source_line",
+                format=detection.source_format,
+                candidates=", ".join(detection.candidates) or "—",
+            )
+        )
+        for diagnostic in detection.diagnostics:
+            write(self._diagnostic_line(diagnostic))
+
+    @on(Button.Pressed, "#build-start")
+    def _on_build_start(self) -> None:
+        pack_path = self._validated_pack_path()
+        if pack_path is None:
             return
         targets = self._selected_targets()
         if not targets:
@@ -1287,10 +1371,12 @@ class MigrationScreen(LocalizedScreen, Screen[None]):
         output = self._resolve_output()
         if output is None:
             return
+        plan_only = self.query_one("#plan-only", Checkbox).value
         log = self.query_one("#build-log", RichLog)
         log.clear()
+        self._begin_busy()
         self.run_worker(
-            self._build_task(log, pack_path, output, targets, self._policy()),
+            self._build_task(log, pack_path, output, targets, self._policy(), plan_only),
             thread=True,
             exclusive=True,
             group="build",
@@ -1303,6 +1389,7 @@ class MigrationScreen(LocalizedScreen, Screen[None]):
         output: Path,
         targets: list[VersionProfile],
         policy: BuildPolicy,
+        plan_only: bool,
     ) -> None:
         """Blocking build executed by the threaded worker."""
 
@@ -1326,7 +1413,7 @@ class MigrationScreen(LocalizedScreen, Screen[None]):
                     policy=policy,
                     fallbacks=self._config.fallbacks,
                     output_name=self._config.output_name,
-                    emit_archives=True,
+                    emit_archives=not plan_only,
                     rules=registry.rules(),
                 )
         except Exception as exc:  # Surface any failure in the log instead of crashing the UI.
@@ -1334,6 +1421,10 @@ class MigrationScreen(LocalizedScreen, Screen[None]):
             write(f"[bold red]{escape(message)}[/bold red]")
             app.call_from_thread(self.notify, message, severity="error")
             return
+        finally:
+            # The app may be shutting down while a build is still running.
+            with suppress(RuntimeError):
+                self.app.call_from_thread(self._end_busy)
 
         write(
             app.tr(
@@ -1359,8 +1450,26 @@ class MigrationScreen(LocalizedScreen, Screen[None]):
                 write(self._diagnostic_line(diagnostic))
         if universal:
             write(f"[bold]{escape(app.tr('migration.universal_line', path=str(universal)))}[/bold]")
-        write(app.tr("migration.report_line", path=str(output.resolve() / "compatibility-report.json")))
-        app.call_from_thread(self.notify, app.tr("migration.build_done"), severity="information")
+
+        ok = sum(1 for result in results if result.successful)
+        failed = len(results) - ok
+        if failed:
+            summary_key = "migration.build_summary_partial"
+            write(f"[bold yellow]{escape(app.tr(summary_key, ok=ok, failed=failed))}[/bold yellow]")
+        else:
+            summary_key = "migration.build_summary_ok"
+            write(f"[bold green]{escape(app.tr(summary_key, count=len(results)))}[/bold green]")
+
+        if plan_only:
+            write(app.tr("migration.plan_note"))
+        else:
+            report = build_report(detection, results, universal, policy=policy)
+            report["rule_registry"] = [item.model_dump(mode="json") for item in registry.info()]
+            report_path = output.resolve() / "compatibility-report.json"
+            write_report(report_path, report)
+            write(app.tr("migration.report_line", path=str(report_path)))
+        message = app.tr("migration.build_done") if not failed else app.tr(summary_key, ok=ok, failed=failed)
+        app.call_from_thread(self.notify, message, severity="warning" if failed else "information")
 
     @staticmethod
     def _diagnostic_line(diagnostic: Diagnostic) -> str:
@@ -1471,6 +1580,15 @@ class DpCompatApp(App[None]):
     }
     #build-start {
         width: 24;
+    }
+    #detect-source {
+        width: auto;
+        margin-left: 1;
+    }
+    #plan-only {
+        width: auto;
+        margin-left: 2;
+        margin-top: 1;
     }
     #build-log {
         height: 16;
