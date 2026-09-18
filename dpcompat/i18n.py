@@ -62,6 +62,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "plugin.detail_origin_file": {"zh-CN": "文件插件（{kind}）", "en": "file plugin ({kind})"},
     "plugin.detail_origin_builtin": {"zh-CN": "内置插件", "en": "built-in plugin"},
     "common.cancel": {"zh-CN": "取消", "en": "Cancel"},
+    "plugins.list_failed": {"zh-CN": "读取插件列表失败：{error}", "en": "Could not read the plugin list: {error}"},
     "plugin.install_failed": {"zh-CN": "安装失败：{error}", "en": "Install failed: {error}"},
     "plugin.uninstall_failed": {"zh-CN": "卸载失败：{error}", "en": "Uninstall failed: {error}"},
     "plugin.template_failed": {"zh-CN": "创建模板失败：{error}", "en": "Template creation failed: {error}"},

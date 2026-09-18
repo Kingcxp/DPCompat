@@ -701,12 +701,36 @@ class PluginsScreen(LocalizedScreen, Screen[None]):
         self._refresh()
 
     def _refresh(self) -> None:
-        """Rebuild the list, grouping plugins by their declared target version."""
+        """Rebuild the list in a worker.
+
+        Inspecting a plugin file imports and executes it, so listing must not run on the
+        main thread or the whole interface freezes until every plugin is loaded.
+        """
+
+        assert self._store is not None
+        self.run_worker(self._list_task(self.app.language), thread=True, exclusive=True, group="plugins")
+
+    async def _list_task(self, language: str) -> None:
+        """Worker: read the plugin store and hand the result back to the main thread."""
+
+        assert self._store is not None
+        try:
+            infos = [info.localized(language) for info in self._store.list_plugins()]
+        except Exception as exc:  # A broken plugin file must not crash the screen.
+            self.app.call_from_thread(self._list_failed, f"{type(exc).__name__}: {exc}")
+            return
+        self.app.call_from_thread(self._apply_infos, infos)
+
+    def _list_failed(self, message: str) -> None:
+        """Report a plugin-store failure on the main thread."""
+
+        self.notify(self._t("plugins.list_failed", error=message), severity="error")
+
+    def _apply_infos(self, infos: list[PluginInfo]) -> None:
+        """Group the listed plugins by their declared target version and mount them."""
 
         box = self.query_one("#plugin-list", VerticalScroll)
         box.remove_children()
-        assert self._store is not None
-        infos = [info.localized(self.app.language) for info in self._store.list_plugins()]
         by_version: dict[str, list[PluginInfo]] = {}
         for info in infos:
             by_version.setdefault(info.target_version, []).append(info)
@@ -1034,7 +1058,7 @@ class MarketScreen(LocalizedScreen, Screen[None]):
     def _on_plugin(self, event: Button.Pressed) -> None:
         if not isinstance(event.button, MarketRow):
             return
-        self.app.push_screen(MarketDetailScreen(event.button.plugin, PluginStore()))
+        self.app.push_screen(MarketDetailScreen(event.button.plugin, PluginStore(), installed=set(self._installed)))
 
 
 class MarketDetailScreen(LocalizedScreen, Screen[None]):
@@ -1044,17 +1068,20 @@ class MarketDetailScreen(LocalizedScreen, Screen[None]):
         Binding("escape", "app.pop_screen", "返回")
     ]
 
-    def __init__(self, plugin: MarketPlugin, store: PluginStore) -> None:
+    def __init__(self, plugin: MarketPlugin, store: PluginStore, *, installed: set[str]) -> None:
         super().__init__()
         self._plugin = plugin
         self._store = store
         self._installing = False
+        # The marketplace list already inspected the store; re-listing here would run
+        # plugin imports again on the main thread for every render.
+        self._installed = installed
 
     def _display_info(self) -> PluginInfo:
         return self._plugin.info.localized(self.app.language)
 
     def _is_installed(self) -> bool:
-        return self._plugin.info.id in {item.id for item in self._store.list_plugins()}
+        return self._plugin.info.id in self._installed
 
     def _meta_lines(self, info: PluginInfo) -> list[Static]:
         meta = self._plugin.meta

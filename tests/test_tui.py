@@ -384,7 +384,15 @@ def test_tui_language_switch_re_renders_and_persists(
             await pilot.press("p")
             await pilot.pause()
             assert "Plugin Manager" in str(app.screen.query_one(".screen-title", Static).renderable)
-            fold = app.screen.query_one("#fold-1-21-11", Button)
+            # The list is built by a worker, so wait for its rows instead of assuming.
+            fold = None
+            for _ in range(40):
+                await pilot.pause(0.1)
+                found = app.screen.query("#fold-1-21-11")
+                if found:
+                    fold = found.first(Button)
+                    break
+            assert fold is not None
             fold.scroll_visible(animate=False)
             await pilot.pause()
             await pilot.click("#fold-1-21-11")
