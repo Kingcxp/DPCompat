@@ -38,6 +38,19 @@ def test_tui_boots_and_lists_every_target(tmp_path: Path, monkeypatch: pytest.Mo
     _run(scenario())
 
 
+async def _open_plugins(app, pilot) -> None:
+    """Open the plugin manager and wait for the worker-built version sections."""
+
+    await pilot.press("p")
+    await pilot.pause()
+    assert isinstance(app.screen, PluginsScreen)
+    for _ in range(50):
+        await pilot.pause(0.1)
+        if app.screen.query(VersionSection):
+            break
+    assert app.screen.query(VersionSection), "the plugin list never rendered"
+
+
 def test_tui_plugins_screen_shows_builtin_and_installed_plugins(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -48,9 +61,7 @@ def test_tui_plugins_screen_shows_builtin_and_installed_plugins(
         app = DpCompatApp()
         async with app.run_test() as pilot:
             await pilot.pause()
-            await pilot.press("p")  # open the plugins screen
-            await pilot.pause()
-            assert isinstance(app.screen, PluginsScreen)
+            await _open_plugins(app, pilot)
             items = [button for button in app.screen.query(Button) if button.has_class("plugin-item")]
             assert len(items) >= 13  # every built-in plugin is browsable as a row
 
@@ -116,8 +127,7 @@ def test_tui_plugins_screen_groups_plugins_by_target_version(
         app = DpCompatApp()
         async with app.run_test() as pilot:
             await pilot.pause()
-            await pilot.press("p")  # open the plugins screen
-            await pilot.pause()
+            await _open_plugins(app, pilot)
             sections = list(app.screen.query(VersionSection))
             versions_with_plugins = sorted({info.target_version for info in PluginStore().list_plugins()})
             # Every version that owns plugins gets exactly one collapsible section.
@@ -147,8 +157,7 @@ def test_tui_plugin_detail_page_toggles_and_documents(
         app = DpCompatApp()
         async with app.run_test() as pilot:
             await pilot.pause()
-            await pilot.press("p")
-            await pilot.pause()
+            await _open_plugins(app, pilot)
             await pilot.click("#fold-1-21-5")
             await pilot.pause(0.3)
             # Opening a plugin row shows the detail page with its Markdown docs.
@@ -186,8 +195,7 @@ def test_tui_template_screen_scaffolds_a_project(
         app = DpCompatApp()
         async with app.run_test() as pilot:
             await pilot.pause()
-            await pilot.press("p")
-            await pilot.pause()
+            await _open_plugins(app, pilot)
             # Drive the template screen directly instead of walking the file tree.
             app.push_screen(TemplateScreen(tmp_path))
             await pilot.pause()
