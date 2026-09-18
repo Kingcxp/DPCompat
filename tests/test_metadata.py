@@ -20,6 +20,20 @@ class MetadataTests(unittest.TestCase):
         declared, _ = detect_format_range({"pack": {"min_format": 88, "max_format": 94}})
         self.assertTrue(declared.contains(PackFormat(94, 1)))
 
+    def test_equivalent_bound_spellings_parse_identically(self) -> None:
+        integer, _ = detect_format_range({"pack": {"min_format": 88, "max_format": 94}})
+        text, _ = detect_format_range({"pack": {"min_format": "88", "max_format": "94"}})
+        single, _ = detect_format_range({"pack": {"min_format": [88], "max_format": [94]}})
+        explicit, _ = detect_format_range({"pack": {"min_format": [88, 0], "max_format": [94, 0]}})
+        self.assertEqual(text, integer)
+        self.assertEqual(single, integer)
+        self.assertTrue(integer.contains(PackFormat(94, 1)))
+        self.assertFalse(explicit.contains(PackFormat(94, 1)))
+
+    def test_range_description_hides_the_open_minor_sentinel(self) -> None:
+        declared, _ = detect_format_range({"pack": {"min_format": 88, "max_format": 94}})
+        self.assertEqual(declared.describe(), "88..94+")
+
     def test_render_new_metadata(self) -> None:
         result = render_single_target_metadata(
             {"pack": {"pack_format": 61, "description": "x"}},

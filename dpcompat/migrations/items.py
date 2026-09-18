@@ -107,6 +107,18 @@ def _downgrade_map(
     diagnostics: list[Diagnostic] = []
     tooltip = result.pop("minecraft:tooltip_display", None)
     hidden_components: set[str] = set()
+    if tooltip is not None and not isinstance(tooltip, dict):
+        diagnostics.append(
+            policy_diagnostic(
+                context,
+                compatibility=Compatibility.UNKNOWN,
+                code="tooltip-display-not-an-object",
+                message="minecraft:tooltip_display is not an object and cannot be expanded",
+                path=context.relative(path),
+                line=None,
+                rule_id=rule_id,
+            )
+        )
     if isinstance(tooltip, dict):
         if tooltip.get("hide_tooltip") is True:
             result["minecraft:hide_tooltip"] = {}

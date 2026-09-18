@@ -32,10 +32,14 @@ class EntitySnbtRule:
             return None
         if values[0] == "summon" and len(values) >= 3:
             # summon <entity> [pos] [nbt]; an NBT argument always starts with a compound.
-            # A macro placeholder is also a candidate: it can generate the compound at
-            # runtime, so the caller must fail closed instead of silently skipping it.
+            # A literal compound wins over a macro token, because a macro placeholder may
+            # just be the position: picking the first placeholder would report a parse
+            # failure for a command whose real NBT argument is statically readable.
             for index in range(2, len(values)):
-                if values[index].startswith("{") or "$(" in values[index]:
+                if values[index].startswith("{"):
+                    return values[1], index
+            for index in range(2, len(values)):
+                if "$(" in values[index]:
                     return values[1], index
         if len(values) >= 5 and values[:3] == ("data", "merge", "entity"):
             return "", 4

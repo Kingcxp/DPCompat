@@ -115,11 +115,17 @@ def load_repos() -> list[RepoSpec]:
 
     path = repos_path()
     repos: list[RepoSpec] = [RepoSpec(name=DEFAULT_REPO_NAME, url=DEFAULT_REPO_URL)]
+    if not path.is_file():
+        return repos
     try:
         with path.open("rb") as handle:
             raw = tomllib.load(handle)
-    except (OSError, tomllib.TOMLDecodeError):
-        return repos
+    except tomllib.TOMLDecodeError as exc:
+        # Silently returning only the built-in repository would hide every registered
+        # repository from the user and then persist that truncated list on the next write.
+        raise MarketError(f"{path}: invalid repository file: {exc}") from exc
+    except OSError as exc:
+        raise MarketError(f"{path}: cannot read repository file: {exc}") from exc
     table = raw.get("repo")
     if not isinstance(table, dict):
         return repos
@@ -136,6 +142,12 @@ def load_repos() -> list[RepoSpec]:
     return repos
 
 
+def _toml_escape(value: str) -> str:
+    """Escape a value for a basic TOML string."""
+
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def save_repos(repos: list[RepoSpec]) -> None:
     """Persist the repository registrations (the official default is not saved)."""
 
@@ -148,8 +160,8 @@ def save_repos(repos: list[RepoSpec]) -> None:
     for spec in repos:
         if spec.name == DEFAULT_REPO_NAME:
             continue
-        lines.append(f'[repo."{spec.name}"]')
-        lines.append(f'url = "{spec.url}"')
+        lines.append(f'[repo."{_toml_escape(spec.name)}"]')
+        lines.append(f'url = "{_toml_escape(spec.url)}"')
         lines.append(f"enabled = {'true' if spec.enabled else 'false'}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -202,6 +214,8 @@ def fetch_json(url: str) -> Any:
 
     try:
         return json.loads(_fetch_bytes(url).decode("utf-8"))
+    except UnicodeDecodeError as exc:
+        raise MarketError(f"Invalid UTF-8 from {url}: {exc}") from exc
     except json.JSONDecodeError as exc:
         raise MarketError(f"Invalid JSON from {url}: {exc}") from exc
 
@@ -259,8 +273,12 @@ def inspect_plugin_file(data: bytes, suffix: str, *, source: str) -> PluginInfo:
         path.write_bytes(data)
         try:
             return PluginStore()._inspect_file(path)
-        except ValueError as exc:
-            raise MarketError(f"{source}: dpcompat rejected the plugin: {exc}") from exc
+        except MarketError:
+            raise
+        except Exception as exc:
+            # A broken plugin file must surface as a MarketError so a single bad entry in a
+            # repository is skipped instead of aborting the whole listing with a traceback.
+            raise MarketError(f"{source}: dpcompat rejected the plugin: {type(exc).__name__}: {exc}") from exc
 
 
 def fetch_market_plugin(repo: RepoSpec, category: CategoryInfo, plugin_id: str) -> MarketPlugin:

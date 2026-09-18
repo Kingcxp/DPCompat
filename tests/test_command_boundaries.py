@@ -73,6 +73,18 @@ def test_macro_gamerules_cannot_be_statically_migrated() -> None:
         assert {item.code for item in diagnostics} == {"macro-gamerule-cannot-migrate"}
 
 
+def test_static_macro_gamerule_lines_are_migrated() -> None:
+    # A ``$`` prefix only makes the line a macro line; without placeholders the command is
+    # fully static and must migrate instead of failing closed.
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = make_pack(Path(temp_dir) / "pack", [88, 0])
+        write(root, "data/demo/function/test.mcfunction", "$gamerule doDaylightCycle true\n")
+        diagnostics = _run_gamerules(root, 88, 94.1)
+        assert diagnostics == []
+        text = (root / "data/demo/function/test.mcfunction").read_text(encoding="utf-8")
+        assert "minecraft:advance_time" in text
+
+
 def test_gamerule_downgrade_restores_camel_case_names() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         root = make_pack(Path(temp_dir) / "pack", [94, 1])

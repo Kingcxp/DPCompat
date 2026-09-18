@@ -51,7 +51,7 @@ class WorldBorderTimeRule:
                     if not (is_size_time or is_warning_time):
                         continue
                     token = segment[3]
-                    if parsed.macro or "$(" in token.value:
+                    if "$(" in token.value:
                         diagnostics.append(
                             policy_diagnostic(
                                 context,

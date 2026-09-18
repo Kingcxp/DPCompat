@@ -59,6 +59,9 @@ class Recipe26Rule:
 
             if upgrading:
                 if recipe_type in _NO_BOOK_TYPES and "group" in result:
+                    # 26.1 removed the unused ``group`` field from stonecutting/smithing
+                    # recipes; dropping it is what the target requires and the field had no
+                    # behavioural effect, so this stays lossless.
                     result.pop("group")
                     changed += 1
                 if recipe_type == "minecraft:crafting_special_mapcloning":
@@ -107,6 +110,8 @@ class Recipe26Rule:
                             )
                         )
                 if recipe_type in _COOKING_TYPES and isinstance(result.get("result"), dict):
+                    # 26.1 added the object form for cooking results but still accepts the
+                    # legacy string, so only the downgrade has to rewrite anything.
                     recipe_result = result["result"]
                     if (
                         set(recipe_result).issubset({"id", "count"})

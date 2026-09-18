@@ -11,11 +11,10 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-from .models import PackFormat, PackFormatRange
+from .models import OPEN_MINOR, PackFormat, PackFormatRange
 
 # An integer modern max_format means “all minor versions of this major”.  Represent
 # that open upper end with a large sentinel while comparing typed PackFormat values.
-_MAX_MINOR = 2_147_483_647
 
 
 def _parse_old_supported(value: Any, fallback: PackFormat) -> PackFormatRange:
@@ -37,12 +36,19 @@ def _parse_old_supported(value: Any, fallback: PackFormat) -> PackFormatRange:
 
 
 def _parse_new_bound(value: Any, *, maximum: bool) -> PackFormat:
+    """Parse one min_format/max_format bound.
+
+    A bare major (``88``, ``"88"`` or ``[88]``) means "any minor of that major" for a
+    maximum and "the first minor" for a minimum, so every spelling of the same bound
+    behaves identically.  An explicit ``[major, minor]`` pair is always exact.
+    """
+
     if isinstance(value, int) and not isinstance(value, bool):
-        return PackFormat(value, _MAX_MINOR if maximum else 0)
-    if isinstance(value, list) and len(value) == 1:
-        parsed = PackFormat.parse(value)
-        return PackFormat(parsed.major, _MAX_MINOR if maximum else 0)
-    return PackFormat.parse(value)
+        return PackFormat(value, OPEN_MINOR if maximum else 0)
+    parsed = PackFormat.parse(value)
+    if isinstance(value, list) and len(value) == 2:
+        return parsed
+    return PackFormat(parsed.major, OPEN_MINOR if maximum else 0)
 
 
 def detect_format_range(metadata: dict[str, Any]) -> tuple[PackFormatRange, PackFormat]:

@@ -232,6 +232,29 @@ def test_install_rejects_duplicate_ids_and_rule_collisions(plugin_dir: Path, tmp
         store.install(builtin_rule)
 
 
+def test_force_install_replaces_the_other_file_format(plugin_dir: Path, tmp_path: Path) -> None:
+    # Two files declaring one plugin id would make every later build fail with a duplicate
+    # rule id, so a forced install must remove the differently-suffixed sibling.
+    python_source = tmp_path / "demo.py"
+    python_source.write_text(_PYTHON_PLUGIN, encoding="utf-8")
+    store = PluginStore()
+    store.install(python_source)
+
+    declarative = json.loads(json.dumps(_JSON_PLUGIN))
+    declarative["plugin"]["id"] = "demo.python@88"
+    declarative["rules"][0]["id"] = "demo.python.declarative@88"
+    json_source = tmp_path / "demo.json"
+    json_source.write_text(json.dumps(declarative), encoding="utf-8")
+    store.install(json_source, force=True)
+
+    installed = store._installed_infos()
+    assert [info.id for info in installed] == ["demo.python@88"]
+    assert not (plugin_dir / "demo.python@88.py").exists()
+    assert (plugin_dir / "demo.python@88.json").exists()
+    store.uninstall("demo.python@88")
+    assert store._installed_infos() == ()
+
+
 def test_install_rejects_invalid_files(plugin_dir: Path, tmp_path: Path) -> None:
     store = PluginStore()
     notes = tmp_path / "notes.txt"

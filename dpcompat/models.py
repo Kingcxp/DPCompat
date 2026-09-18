@@ -85,6 +85,10 @@ class PackFormat(FrozenModel):
         return f"{self.major}.{self.minor}" if self.minor else str(self.major)
 
 
+OPEN_MINOR = 2_147_483_647
+"""Minor component that marks a declared maximum as "any minor of this major"."""
+
+
 class PackFormatRange(FrozenModel):
     """Inclusive range of pack formats used by metadata and overlays."""
 
@@ -116,6 +120,15 @@ class PackFormatRange(FrozenModel):
 
     def contains(self, value: PackFormat) -> bool:
         return self.minimum <= value <= self.maximum
+
+    def describe(self) -> str:
+        """Render the range for user-facing text, collapsing an open minor maximum."""
+
+        if self.minimum == self.maximum:
+            return str(self.minimum)
+        if self.maximum.minor == OPEN_MINOR:
+            return f"{self.minimum}..{self.maximum.major}+"
+        return f"{self.minimum}..{self.maximum}"
 
 
 class VersionProfile(FrozenModel):

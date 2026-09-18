@@ -95,18 +95,24 @@ class TimelineClockRule:
                     result["clock"] = "minecraft:overworld"
                     changed += 1
             else:
-                if result.get("time_markers"):
-                    diagnostics.append(
-                        policy_diagnostic(
-                            context,
-                            compatibility=Compatibility.UNSUPPORTED,
-                            code="timeline-time-markers-cannot-downgrade",
-                            message="Timeline time_markers do not exist before 26.1",
-                            path=context.relative(path),
-                            line=None,
-                            rule_id=self.id,
+                markers = result.get("time_markers")
+                if markers is not None:
+                    # Pre-26.1 timelines have no time_markers field at all, so the key must
+                    # go either way; only a non-empty list loses authored content.
+                    if markers:
+                        diagnostics.append(
+                            policy_diagnostic(
+                                context,
+                                compatibility=Compatibility.UNSUPPORTED,
+                                code="timeline-time-markers-cannot-downgrade",
+                                message="Timeline time_markers do not exist before 26.1",
+                                path=context.relative(path),
+                                line=None,
+                                rule_id=self.id,
+                            )
                         )
-                    )
+                    result.pop("time_markers")
+                    changed += 1
                 clock = result.get("clock")
                 if clock in {None, "minecraft:overworld", "overworld"}:
                     if "clock" in result:
@@ -149,12 +155,30 @@ class TestEnvironmentClockRule:
             result = dict(value)
             changed = 0
             diagnostics: list[Diagnostic] = []
-            if upgrading and "time_of_day" in result and "clock_time" not in result:
-                result["clock_time"] = {
-                    "clock": "minecraft:overworld",
-                    "time": result.pop("time_of_day"),
-                }
-                changed += 1
+            if upgrading and "time_of_day" in result:
+                if "clock_time" in result:
+                    diagnostics.append(
+                        policy_diagnostic(
+                            context,
+                            compatibility=Compatibility.UNKNOWN,
+                            code="test-environment-clock-conflict",
+                            message=(
+                                "Both time_of_day and clock_time are present; the target keeps clock_time "
+                                "and drops the legacy field, which needs author review"
+                            ),
+                            path=context.relative(path),
+                            line=None,
+                            rule_id=self.id,
+                        )
+                    )
+                    result.pop("time_of_day")
+                    changed += 1
+                else:
+                    result["clock_time"] = {
+                        "clock": "minecraft:overworld",
+                        "time": result.pop("time_of_day"),
+                    }
+                    changed += 1
             elif not upgrading and "clock_time" in result:
                 clock_time = result["clock_time"]
                 if (

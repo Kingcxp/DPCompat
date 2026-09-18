@@ -121,16 +121,22 @@ def upgrade_entity_nbt(entity_id: str, value: dict[str, Any]) -> EntityTransform
 
     if equipment is not None:
         armor = data.pop("ArmorItems", None)
-        if isinstance(armor, list):
-            for slot, item in zip(("feet", "legs", "chest", "head"), armor, strict=False):
-                if not _is_empty_item(item):
-                    equipment.setdefault(slot, item)
+        if armor is not None:
+            if isinstance(armor, list):
+                for slot, item in zip(("feet", "legs", "chest", "head"), armor, strict=False):
+                    if not _is_empty_item(item):
+                        equipment.setdefault(slot, item)
+            else:
+                warnings.append("ArmorItems is not a list; the legacy field was dropped instead of merged")
             changed += 1
         hands = data.pop("HandItems", None)
-        if isinstance(hands, list):
-            for slot, item in zip(("mainhand", "offhand"), hands, strict=False):
-                if not _is_empty_item(item):
-                    equipment.setdefault(slot, item)
+        if hands is not None:
+            if isinstance(hands, list):
+                for slot, item in zip(("mainhand", "offhand"), hands, strict=False):
+                    if not _is_empty_item(item):
+                        equipment.setdefault(slot, item)
+            else:
+                warnings.append("HandItems is not a list; the legacy field was dropped instead of merged")
             changed += 1
         if "body_armor_item" in data:
             equipment.setdefault("body", data.pop("body_armor_item"))
@@ -237,6 +243,9 @@ def downgrade_entity_nbt(entity_id: str, value: dict[str, Any]) -> EntityTransfo
         changed += 1
 
     equipment = data.pop("equipment", None)
+    if equipment is not None and not isinstance(equipment, dict):
+        warnings.append("equipment is not a compound; the field was dropped instead of expanded")
+        changed += 1
     if isinstance(equipment, dict):
         empty: dict[str, Any] = {}
         armor = [equipment.pop(slot, empty) for slot in ("feet", "legs", "chest", "head")]
@@ -260,6 +269,9 @@ def downgrade_entity_nbt(entity_id: str, value: dict[str, Any]) -> EntityTransfo
         changed += 1
 
     drop_chances = data.pop("drop_chances", None)
+    if drop_chances is not None and not isinstance(drop_chances, dict):
+        warnings.append("drop_chances is not a compound; the field was dropped instead of expanded")
+        changed += 1
     if isinstance(drop_chances, dict):
         default = snbt.SnbtNumber("0.085f")
         armor = [drop_chances.pop(slot, default) for slot in ("feet", "legs", "chest", "head")]

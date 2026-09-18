@@ -12,7 +12,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from .commands import iter_execute_segments, parse_command_line
+from .commands import contains_complete_atom, iter_execute_segments, parse_command_line
 from .jsonutil import JsonNormalizationError, is_strict_json, load_path
 from .manifests import feature_specs, identifier_minimums, resource_minimums
 from .models import (
@@ -247,8 +247,8 @@ def _scan_command(
             if diagnostic:
                 diagnostics.append(diagnostic)
 
-    for identifier, (minimum, spec) in identifier_minimums().items():
-        if not any(identifier in token.value for token in parsed.tokens):
+    for identifier, (minimum, spec) in sorted(identifier_minimums().items()):
+        if not any(contains_complete_atom(token.value, identifier) for token in parsed.tokens):
             continue
         inferred = _record_evidence(
             evidence,

@@ -49,6 +49,24 @@ class PackIoTests(unittest.TestCase):
                 "say base\n",
             )
 
+    def test_nested_overlay_declaration_is_excluded_from_effective_source(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            root = make_pack(base / "pack")
+            metadata = {
+                "pack": {"pack_format": 61, "description": "x"},
+                "overlays": {"entries": [{"directory": "overlays/fmt94", "formats": [94, 1]}]},
+            }
+            write(root, "data/demo/function/test.mcfunction", "say base\n")
+            write(root, "overlays/fmt94/data/demo/function/test.mcfunction", "say overlay\n")
+            write(root, "overlays/notes/readme.txt", "keep\n")
+            destination = base / "flat"
+            applied = flatten_pack(root, destination, PackFormat(61), metadata)
+            self.assertEqual(applied, [])
+            self.assertFalse((destination / "overlays/fmt94").exists())
+            self.assertEqual((destination / "data/demo/function/test.mcfunction").read_text(), "say base\n")
+            self.assertTrue((destination / "overlays/notes/readme.txt").is_file())
+
     def test_deterministic_zip_is_reproducible_and_readable(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             base = Path(temp_dir)

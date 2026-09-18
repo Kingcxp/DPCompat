@@ -139,6 +139,15 @@ def merge_tree(source: Path, destination: Path) -> None:
             shutil.copy2(path, target)
 
 
+def _normalize_overlay_directory(value: str) -> str:
+    """Normalize a declared overlay directory to a package-relative POSIX path."""
+
+    normalized = value.replace("\\", "/").strip("/")
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    return normalized
+
+
 def overlay_directories(metadata: dict[str, Any]) -> set[str]:
     """Return every directory reserved by source overlay declarations."""
 
@@ -149,7 +158,9 @@ def overlay_directories(metadata: dict[str, Any]) -> set[str]:
     if not isinstance(entries, list):
         return set()
     return {
-        entry["directory"] for entry in entries if isinstance(entry, dict) and isinstance(entry.get("directory"), str)
+        _normalize_overlay_directory(entry["directory"])
+        for entry in entries
+        if isinstance(entry, dict) and isinstance(entry.get("directory"), str)
     }
 
 
@@ -159,14 +170,27 @@ def flatten_pack(
     source_format: PackFormat,
     metadata: dict[str, Any],
 ) -> list[str]:
-    """Materialize the effective pack for one source format, including source overlays."""
+    """Materialize the effective pack for one source format, including source overlays.
+
+    Overlay declarations may point at nested directories (``overlays/fmt94``), so the copy
+    prunes by package-relative path instead of by top-level name.  Copying a non-matching
+    overlay would ship content the project explicitly excludes from the effective source.
+    """
+
     if destination.exists():
         shutil.rmtree(destination)
     destination.mkdir(parents=True)
     overlay_dirs = overlay_directories(metadata)
-    ignored = IGNORED_NAMES | overlay_dirs
+
+    def _ignore(directory: str, names: list[str]) -> set[str]:
+        relative = Path(directory).resolve().relative_to(source.resolve())
+        prefix = "" if relative == Path() else relative.as_posix() + "/"
+        skipped = {name for name in names if name in IGNORED_NAMES}
+        skipped.update(name for name in names if f"{prefix}{name}" in overlay_dirs)
+        return skipped
+
     for child in source.iterdir():
-        if child.name in ignored:
+        if child.name in IGNORED_NAMES or child.name in overlay_dirs:
             continue
         target = destination / child.name
         if child.is_dir():
@@ -184,6 +208,7 @@ def flatten_pack(
             directory = entry.get("directory")
             if not isinstance(directory, str):
                 continue
+            directory = _normalize_overlay_directory(directory)
             overlay_root = source / directory
             if not overlay_root.is_dir():
                 raise ValueError(f"Overlay directory declared but missing: {directory}")

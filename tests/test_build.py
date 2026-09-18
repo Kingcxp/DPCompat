@@ -6,7 +6,7 @@ from pathlib import Path
 
 from dpcompat.detector import detect_pack
 from dpcompat.engine import compile_pack
-from dpcompat.models import PackFormat
+from dpcompat.models import BuildPolicy, PackFormat
 from dpcompat.report import build_report
 from dpcompat.versions import resolve_profile
 
@@ -111,6 +111,47 @@ class EngineBuildTests(unittest.TestCase):
             )
             self.assertEqual(detection.source_format, PackFormat(71))
             self.assertTrue(any(item.code == "source-format-overridden" for item in detection.diagnostics))
+
+    def test_policy_denies_a_fallback_emulated_record(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            root = make_pack(base / "pack")
+            write(root, "data/demo/function/load.mcfunction", "say base\n")
+            fallback = base / "compat"
+            write(fallback, "data/demo/function/load.mcfunction", "say fallback\n")
+            _, results, _ = compile_pack(
+                root,
+                [resolve_profile("1.21.4")],
+                base / "out",
+                fallbacks={"1.21.4": fallback},
+                policy=BuildPolicy(allow_emulated=False),
+            )
+            self.assertFalse(results[0].successful)
+            self.assertIsNone(results[0].archive)
+            self.assertTrue(any(item.code == "policy-denied-migration" for item in results[0].diagnostics))
+
+    def test_fallback_decimal_format_spelling_is_honoured(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            root = make_pack(base / "pack")
+            write(root, "data/demo/function/load.mcfunction", "say base\n")
+            fallback = base / "compat"
+            write(fallback, "data/demo/function/load.mcfunction", "say fallback\n")
+            _, results, _ = compile_pack(
+                root,
+                [resolve_profile("1.21.9")],
+                base / "out",
+                fallbacks={"88.0": fallback},
+                source_format=PackFormat(71),
+            )
+            self.assertTrue(results[0].successful)
+            archive = results[0].archive
+            assert archive is not None
+            with zipfile.ZipFile(archive) as bundle:
+                self.assertEqual(
+                    bundle.read("data/demo/function/load.mcfunction").decode("utf-8"),
+                    "say fallback\n",
+                )
 
     def test_universal_guard_and_complete_overlay_layers(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

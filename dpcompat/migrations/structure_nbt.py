@@ -77,12 +77,18 @@ def upgrade_entity(entity_id: str, data: dict[str, nbt.NbtTag]) -> NbtEntityResu
                 if not _empty_item(item):
                     equipment.setdefault(slot, item)
             result.changed += 1
+        elif armor_tag is not None:
+            result.warnings.append("ArmorItems was not a compound list; the field was dropped instead of merged")
+            result.changed += 1
         hands_tag = data.pop("HandItems", None)
         hands = nbt.list_values(hands_tag, nbt.TAG_COMPOUND) if hands_tag else None
         if hands is not None:
             for slot, item in zip(("mainhand", "offhand"), hands, strict=False):
                 if not _empty_item(item):
                     equipment.setdefault(slot, item)
+            result.changed += 1
+        elif hands_tag is not None:
+            result.warnings.append("HandItems was not a compound list; the field was dropped instead of merged")
             result.changed += 1
         for old, slot in (("body_armor_item", "body"), ("SaddleItem", "saddle")):
             if old in data:
@@ -116,11 +122,17 @@ def upgrade_entity(entity_id: str, data: dict[str, nbt.NbtTag]) -> NbtEntityResu
             for slot, chance in zip(("feet", "legs", "chest", "head"), armor_drop, strict=False):
                 chances.setdefault(slot, chance)
             result.changed += 1
+        elif armor_drop_tag is not None:
+            result.warnings.append("ArmorDropChances was not a float list; the field was dropped instead of merged")
+            result.changed += 1
         hand_drop_tag = data.pop("HandDropChances", None)
         hand_drop = nbt.list_values(hand_drop_tag, nbt.TAG_FLOAT) if hand_drop_tag else None
         if hand_drop is not None:
             for slot, chance in zip(("mainhand", "offhand"), hand_drop, strict=False):
                 chances.setdefault(slot, chance)
+            result.changed += 1
+        elif hand_drop_tag is not None:
+            result.warnings.append("HandDropChances was not a float list; the field was dropped instead of merged")
             result.changed += 1
         if "body_armor_drop_chance" in data:
             chances.setdefault("body", data.pop("body_armor_drop_chance"))
@@ -129,7 +141,13 @@ def upgrade_entity(entity_id: str, data: dict[str, nbt.NbtTag]) -> NbtEntityResu
             data["drop_chances"] = _compound_tag(chances)
 
     if (
-        entity_id in {"minecraft:item_frame", "minecraft:glow_item_frame"}
+        entity_id
+        in {
+            "minecraft:item_frame",
+            "minecraft:glow_item_frame",
+            "minecraft:painting",
+            "minecraft:leash_knot",
+        }
         and all(key in data for key in ("TileX", "TileY", "TileZ"))
         and "block_pos" not in data
     ):
@@ -210,7 +228,12 @@ def downgrade_entity(entity_id: str, data: dict[str, nbt.NbtTag]) -> NbtEntityRe
         data["drop_chances"] = chances_tag
         result.warnings.append("drop_chances was not a compound")
 
-    if entity_id in {"minecraft:item_frame", "minecraft:glow_item_frame"}:
+    if entity_id in {
+        "minecraft:item_frame",
+        "minecraft:glow_item_frame",
+        "minecraft:painting",
+        "minecraft:leash_knot",
+    }:
         block_pos = data.pop("block_pos", None)
         if block_pos and block_pos.type_id == nbt.TAG_INT_ARRAY and len(block_pos.value) == 3:
             for key, number in zip(("TileX", "TileY", "TileZ"), block_pos.value, strict=True):

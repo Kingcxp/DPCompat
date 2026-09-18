@@ -70,6 +70,9 @@ def check_with_server(
     root.mkdir(parents=True, exist_ok=True)
     try:
         (root / "eula.txt").write_text("eula=true\n", encoding="utf-8")
+        # A reused keep_directory retains the previous run's logs/latest.log, whose error
+        # markers would otherwise be attributed to this clean run.
+        (root / "logs" / "latest.log").unlink(missing_ok=True)
         (root / "server.properties").write_text(
             "level-name=world\n"
             "online-mode=false\n"

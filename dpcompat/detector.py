@@ -48,7 +48,7 @@ def detect_pack(root: Path) -> DetectionResult:
             Diagnostic(
                 Severity.WARNING,
                 "metadata-understates-content",
-                f"Content appears to require format {inferred}, but pack.mcmeta ends at {declared_range.maximum}",
+                f"Content appears to require format {inferred}, but pack.mcmeta ends at {declared_range.describe()}",
                 path="pack.mcmeta",
             )
         )
@@ -67,8 +67,8 @@ def detect_pack(root: Path) -> DetectionResult:
                 Severity.INFO,
                 "metadata-range",
                 (
-                    f"Input declares compatibility from {declared_range.minimum} through "
-                    f"{declared_range.maximum}; selected source syntax is {source_format}"
+                    f"Input declares compatibility {declared_range.describe()}; "
+                    f"selected source syntax is {source_format}"
                 ),
                 path="pack.mcmeta",
             )

@@ -100,7 +100,7 @@ class GameRuleRegistryRule:
                     values = tuple(token.value for token in segment)
                     if len(values) < 2 or values[0] != "gamerule":
                         continue
-                    if parsed.macro or any("$(" in value for value in values):
+                    if any("$(" in value for value in values):
                         diagnostics.append(
                             policy_diagnostic(
                                 context,

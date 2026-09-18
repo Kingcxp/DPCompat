@@ -113,3 +113,25 @@ class ScannerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_identifier_matching_requires_a_complete_atom(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(root, "data/demo/function/load.mcfunction", "give @s minecraft:iron_chain_gate\n")
+            scan = scan_pack(root, target=PackFormat(80))
+            self.assertFalse(any(item.code == "identifier-too-new" for item in scan.diagnostics))
+
+    def test_complete_identifier_atom_is_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(
+                root,
+                "data/demo/function/load.mcfunction",
+                'give @s minecraft:stone[minecraft:item_name="minecraft:iron_chain"]\n',
+            )
+            scan = scan_pack(root, target=PackFormat(80))
+            self.assertTrue(any(item.code == "identifier-too-new" for item in scan.diagnostics))
+
+
+if __name__ == "__main__":
+    unittest.main()

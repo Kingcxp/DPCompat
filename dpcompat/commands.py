@@ -43,6 +43,32 @@ class ParsedCommandLine:
 _OPEN_TO_CLOSE = {"[": "]", "{": "}", "(": ")"}
 _CLOSE = set(_OPEN_TO_CLOSE.values())
 
+# Characters that terminate a resource-location atom inside a command token.  ``:`` is a
+# boundary character so ``minecraft:chain`` matches in ``"minecraft:chain"``, while the
+# boundary test still rejects ``minecraft:chainmail_helmet``.
+_ATOM_DELIMITERS = frozenset("[]{}(),:=!| \t\r\n'\"")
+
+
+def atom_boundaries_ok(token: str, start: int, end: int) -> bool:
+    """Return whether ``token[start:end]`` is a complete atom, not part of a longer one."""
+
+    left_ok = start == 0 or token[start - 1] in _ATOM_DELIMITERS
+    right_ok = end == len(token) or token[end] in _ATOM_DELIMITERS
+    return left_ok and right_ok
+
+
+def contains_complete_atom(token: str, value: str) -> bool:
+    """Return whether ``value`` appears in ``token`` as a complete atom."""
+
+    if not value:
+        return False
+    index = token.find(value)
+    while index != -1:
+        if atom_boundaries_ok(token, index, index + len(value)):
+            return True
+        index = token.find(value, index + 1)
+    return False
+
 
 def parse_command_line(line: str) -> ParsedCommandLine:
     """Split a mcfunction line at top-level whitespace.

@@ -119,6 +119,21 @@ def test_add_repo_rejects_unreachable_url(repos_file: Path) -> None:
         market.add_repo("broken", "http://127.0.0.1:1")  # nothing listens on port 1
 
 
+def test_load_repos_reports_a_corrupt_registry(repos_file: Path) -> None:
+    # Silently returning only the built-in repository would hide every registered
+    # repository and then persist that truncated list on the next write.
+    repos_file.write_text('[repo."mine"\nurl = "x"\n', encoding="utf-8")
+    with pytest.raises(market.MarketError, match="invalid repository file"):
+        market.load_repos()
+
+
+def test_save_repos_escapes_urls_that_round_trip(repos_file: Path) -> None:
+    spec = market.RepoSpec(name="mine", url='http://example.invalid/pa"th')
+    market.save_repos([spec])
+    loaded = market.load_repos()
+    assert [item.url for item in loaded if item.name == "mine"] == ['http://example.invalid/pa"th']
+
+
 def test_load_repos_defaults_to_official(repos_file: Path) -> None:
     repos = market.load_repos()
     assert repos[0].name == market.DEFAULT_REPO_NAME

@@ -1068,6 +1068,8 @@ class WorldgenSchemaRule:
                         rule_id=self.id,
                     )
                 )
+        if changed_files == 0:
+            return RuleResult(MigrationRecord(self.id, Compatibility.LOSSLESS, 0, 0))
         return RuleResult(
             MigrationRecord(self.id, Compatibility.UNSUPPORTED, changed_files=0, changed_nodes=changed_files),
             diagnostics,

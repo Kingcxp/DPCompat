@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..commands import parse_command_line
+from ..commands import atom_boundaries_ok, parse_command_line
 from ..jsonutil import JsonNormalizationError, dump_path, load_path
 from ..models import Compatibility, Diagnostic, MigrationRecord, PackFormat, Severity
 from .base import MigrationContext, RuleResult, crosses
@@ -40,16 +40,13 @@ def _replace_exact_json(value: Any, old: str, new: str) -> tuple[Any, int]:
 
 def _replace_command_token(token: str, old: str, new: str) -> tuple[str, int]:
     """Replace complete resource-location atoms without touching arbitrary substrings."""
-    delimiters = set("[]{}(),:=!| \\t\\r\\n'\"")
     output: list[str] = []
     index = 0
     changed = 0
     while index < len(token):
         if token.startswith(old, index):
-            left_ok = index == 0 or token[index - 1] in delimiters
             end = index + len(old)
-            right_ok = end == len(token) or token[end] in delimiters
-            if left_ok and right_ok:
+            if atom_boundaries_ok(token, index, end):
                 output.append(new)
                 index = end
                 changed += 1

@@ -13,6 +13,7 @@ import logging
 import re
 import shutil
 import tempfile
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -58,13 +59,36 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _enforce_policy(diagnostics: list[Diagnostic], policy: BuildPolicy) -> None:
+def _enforce_policy(
+    diagnostics: list[Diagnostic],
+    policy: BuildPolicy,
+    records: Iterable[MigrationRecord] = (),
+) -> None:
+    """Convert policy-denied diagnostics *and* migration outcomes into errors.
+
+    A rule reports its overall compatibility on its ``MigrationRecord``.  Without this
+    second pass a declarative rule declaring ``lossy`` would publish a target even though
+    the policy denies that class, because it only emits diagnostics for JSON failures.
+    """
+
     for item in diagnostics:
         compatibility = item.compatibility
         denied_compatibility = compatibility is not None and not policy.permits(compatibility)
         denied_warning = policy.fail_on_warnings and item.severity == Severity.WARNING
         if denied_compatibility or denied_warning:
             item.severity = Severity.ERROR
+    for record in records:
+        if policy.permits(record.compatibility):
+            continue
+        diagnostics.append(
+            Diagnostic(
+                Severity.ERROR,
+                "policy-denied-migration",
+                (f"Rule {record.rule_id} produced {record.compatibility.value} output, which the active policy denies"),
+                compatibility=record.compatibility,
+                rule_id=record.rule_id,
+            )
+        )
 
 
 def _extend_unique_diagnostics(target: list[Diagnostic], additions: list[Diagnostic]) -> None:
@@ -80,7 +104,17 @@ def _extend_unique_diagnostics(target: list[Diagnostic], additions: list[Diagnos
 
 
 def _fallback_for(profile: VersionProfile, fallbacks: dict[str, Path]) -> Path | None:
-    return fallbacks.get(profile.game_version) or fallbacks.get(str(profile.pack_format))
+    # Accept the game version, the compact format spelling ("88") and the decimal spelling
+    # ("88.0") so a reviewed fallback is never silently ignored because of how it was typed.
+    keys = (
+        profile.game_version,
+        str(profile.pack_format),
+        f"{profile.pack_format.major}.{profile.pack_format.minor}",
+    )
+    for key in keys:
+        if key in fallbacks:
+            return fallbacks[key]
+    return None
 
 
 def build_target(
@@ -172,7 +206,7 @@ def build_target(
                     notes=("Explicit author-reviewed diagnostic resolutions",),
                 )
             )
-    _enforce_policy(diagnostics, policy)
+    _enforce_policy(diagnostics, policy, migrations)
 
     target_metadata = render_single_target_metadata(original_metadata, profile.pack_format, description)
     dump_path(target_dir / "pack.mcmeta", target_metadata)

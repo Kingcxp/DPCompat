@@ -784,6 +784,13 @@ class PluginStore:
         destination = self.directory / f"{info.id}{suffix}"
         if destination.exists() and not force:
             raise ValueError(f"A plugin file already exists at {destination.name}; use --force to replace it")
+        if force:
+            # Replace every file declaring this plugin id, not only the same suffix: two
+            # files with one id make the registry reject every later build with a duplicate
+            # rule id, and uninstall would only remove one of them.
+            for existing in self._installed_infos():
+                if existing.id == info.id and existing.path is not None:
+                    Path(existing.path).unlink(missing_ok=True)
         shutil.copy2(path, destination)
         return info.model_copy(update={"path": str(destination)})
 

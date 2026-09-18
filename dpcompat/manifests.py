@@ -74,11 +74,15 @@ def feature_specs() -> tuple[FeatureSpec, ...]:
 def resource_minimums() -> dict[str, tuple[PackFormat, FeatureSpec]]:
     """Index resource directory names by minimum supported format."""
 
-    return {resource_type: (spec.min_format, spec) for spec in feature_specs() for resource_type in spec.resource_types}
+    return {
+        resource_type: (spec.min_format, spec)
+        for spec in feature_specs()
+        for resource_type in sorted(spec.resource_types)
+    }
 
 
 @lru_cache(maxsize=1)
 def identifier_minimums() -> dict[str, tuple[PackFormat, FeatureSpec]]:
     """Index exact registry identifiers by minimum supported format."""
 
-    return {identifier: (spec.min_format, spec) for spec in feature_specs() for identifier in spec.identifiers}
+    return {identifier: (spec.min_format, spec) for spec in feature_specs() for identifier in sorted(spec.identifiers)}

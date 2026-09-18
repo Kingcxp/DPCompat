@@ -815,6 +815,76 @@ class MacroAndNestedEntityTextTests(unittest.TestCase):
             self.assertTrue(all(item.compatibility == Compatibility.UNKNOWN for item in result.diagnostics))
 
 
+class AuditRegressionTests(unittest.TestCase):
+    """Regression coverage for defects found by the 2026-09 code audit."""
+
+    def test_summon_prefers_a_literal_compound_over_a_position_macro(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir))
+            write(
+                root,
+                "data/demo/function/load.mcfunction",
+                "summon minecraft:zombie $(pos) {FallDistance:1.0f}\n",
+            )
+            result = EntitySnbtRule().apply(MigrationContext(root, PackFormat(61), PackFormat(71), BuildPolicy()))
+            self.assertEqual([item.code for item in result.diagnostics], [])
+            self.assertIn(
+                "fall_distance",
+                (root / "data/demo/function/load.mcfunction").read_text(encoding="utf-8"),
+            )
+
+    def test_non_list_armor_items_is_reported_instead_of_vanishing(self) -> None:
+        result = upgrade_entity_nbt(
+            "minecraft:zombie",
+            {"ArmorItems": {"head": {"id": "minecraft:stone", "count": 1}}},
+        )
+        self.assertTrue(any("ArmorItems" in warning for warning in result.warnings))
+        self.assertNotIn("ArmorItems", result.value)
+
+    def test_non_compound_equipment_is_reported_on_downgrade(self) -> None:
+        result = downgrade_entity_nbt("minecraft:zombie", {"equipment": ["minecraft:stone"]})
+        self.assertTrue(any("equipment" in warning for warning in result.warnings))
+
+    def test_non_object_tooltip_display_is_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [71, 0])
+            write(
+                root,
+                "data/demo/item_modifier/tooltip.json",
+                '{"components":{"minecraft:tooltip_display":true}}\n',
+            )
+            result = ItemTooltipComponentsRule().apply(
+                MigrationContext(root, PackFormat(71), PackFormat(61), BuildPolicy())
+            )
+            self.assertEqual({item.code for item in result.diagnostics}, {"tooltip-display-not-an-object"})
+
+    def test_empty_time_markers_are_removed_without_a_diagnostic(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [101, 1])
+            write(root, "data/demo/timeline/test.json", '{"clock":"minecraft:overworld","time_markers":[]}\n')
+            result = TimelineClockRule().apply(
+                MigrationContext(root, PackFormat(101, 1), PackFormat(94, 1), BuildPolicy())
+            )
+            self.assertEqual([item.code for item in result.diagnostics], [])
+            self.assertNotIn("time_markers", (root / "data/demo/timeline/test.json").read_text(encoding="utf-8"))
+
+    def test_conflicting_test_environment_clocks_are_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [94, 1])
+            write(
+                root,
+                "data/demo/test_environment/test.json",
+                '{"time_of_day":6000,"clock_time":{"clock":"minecraft:overworld","time":1000}}\n',
+            )
+            result = TestEnvironmentClockRule().apply(
+                MigrationContext(root, PackFormat(94, 1), PackFormat(101, 1), BuildPolicy())
+            )
+            self.assertEqual({item.code for item in result.diagnostics}, {"test-environment-clock-conflict"})
+            text = (root / "data/demo/test_environment/test.json").read_text(encoding="utf-8")
+            self.assertNotIn("time_of_day", text)
+            self.assertIn("clock_time", text)
+
+
 class WildernessBoundRuleTests(unittest.TestCase):
     """26.3 (format 121.0) boundary rules."""
 

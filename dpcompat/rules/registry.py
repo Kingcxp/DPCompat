@@ -29,7 +29,6 @@ class RuleRegistry:
     def __init__(self) -> None:
         self._rules: dict[str, MigrationRule] = {}
         self._info: dict[str, RuleInfo] = {}
-        self._sequence = 0
 
     def register(
         self,
@@ -49,7 +48,10 @@ class RuleRegistry:
             raise ValueError(f"Rule {rule_id!r} from {origin} does not implement applies/apply")
         boundary_raw = getattr(rule, "boundary", None)
         boundary = PackFormat.parse(boundary_raw) if boundary_raw is not None else None
-        resolved_priority = priority if priority is not None else int(getattr(rule, "priority", self._sequence))
+        # Extension rules that do not declare a priority used to inherit the registration
+        # counter, which sorted them ahead of every built-in and silently broke the
+        # documented compile contract.  Fall back to the documented extension priority.
+        resolved_priority = priority if priority is not None else int(getattr(rule, "priority", 500))
         sources = official_sources or tuple(str(item) for item in getattr(rule, "official_sources", ()))
         if not sources:
             raise ValueError(f"Rule {rule_id!r} from {origin} must declare at least one primary source")
@@ -64,7 +66,6 @@ class RuleRegistry:
         )
         self._rules[rule_id] = rule
         self._info[rule_id] = info
-        self._sequence += 1
         logger.debug("Registered migration rule %s from %s", rule_id, origin)
 
     def register_many(self, rules: Iterable[MigrationRule], *, origin: str) -> None:

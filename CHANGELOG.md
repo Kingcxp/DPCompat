@@ -18,8 +18,19 @@
 
 ### Fixed
 
+- Build policy: a rule's own compatibility record is now enforced, not only its diagnostics. A declarative rule declaring `lossy`/`unsupported`/`unknown`, or a fallback recorded as `emulated` under `allow_emulated = false`, previously published a target anyway; such a target now fails closed with `policy-denied-migration`.
+- Overlay flattening: an overlay declared under a nested path (for example `overlays/fmt94`) is excluded from the effective source by package-relative path. It used to be copied wholesale, shipping content the project explicitly keeps out of the effective source into every target archive.
+- Entity NBT: `ArmorItems`/`HandItems` (SNBT and binary NBT), `equipment`, and `drop_chances` are reported instead of silently deleted when their shape is not the expected list or compound. Binary structure NBT now also migrates `painting`/`leash_knot` block positions, matching the SNBT path.
+- Scanner: identifier evidence requires a complete resource-location atom, so `minecraft:iron_chain_gate` no longer fails a target for containing `minecraft:iron_chain`; identifier and resource indexes are built in sorted order so reports are byte-stable across runs.
+- Rule ordering: an extension rule that omits `priority` now defaults to the documented extension priority instead of the registration counter, which had silently sorted it ahead of every built-in rule.
+- Plugin store: a forced install replaces every file declaring that plugin id, not only the same file suffix. Two files with one id made every later build fail with a duplicate rule id, and uninstall removed only one of them.
+- Marketplace: non-UTF-8 catalog responses and plugin files that raise anything while being inspected now surface as `MarketError`, so one broken entry is skipped instead of aborting the listing; a corrupt `repos.toml` is reported instead of silently dropping every registered repository, and generated repository TOML escapes quotes and backslashes so a URL round-trips.
 - TUI: footer key hints no longer start in Chinese when the persisted preference is English; every screen installs bindings localized to the active language on mount.
 - CI: `wiki.yml`/`release.yml` used the `secrets` context inside step-level `if:` expressions, which GitHub rejects at validation — both workflows failed with zero jobs since their introduction. Token presence is now mirrored through a job-level env var.
+- Metadata: `min_format`/`max_format` bounds written as `88`, `"88"`, `[88]`, or `[88, 0]` now parse identically, and user-facing text renders an open minor maximum as `94+` instead of leaking the internal sentinel value.
+- Fallbacks: a fallback keyed by the decimal format spelling (`"88.0"`) is honoured, so a reviewed fallback is no longer silently skipped because of how its key was typed.
+- Server check: the reused run directory's `logs/latest.log` is removed before launching, so error markers from an earlier run no longer fail a clean run.
+- Migration rules: a fully static macro line such as `$gamerule doDaylightCycle true` migrates instead of failing closed (only lines whose migrated tokens actually contain a placeholder are blocked); `summon` with a macro position and a literal NBT compound migrates the compound; a non-object `minecraft:tooltip_display` is diagnosed on downgrade; timeline `time_markers` are always removed for pre-26.1 targets (diagnosed only when non-empty); a test environment declaring both `time_of_day` and `clock_time` is diagnosed.
 - CI: `ruff format --check` passes again with ruff 0.16, which now formats fenced Python blocks in Markdown documents.
 
 ## [0.6.0] - 2026-08-16
