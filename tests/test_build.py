@@ -148,10 +148,9 @@ class EngineBuildTests(unittest.TestCase):
             archive = results[0].archive
             assert archive is not None
             with zipfile.ZipFile(archive) as bundle:
-                self.assertEqual(
-                    bundle.read("data/demo/function/load.mcfunction").decode("utf-8"),
-                    "say fallback\n",
-                )
+                # The helper writes with the platform newline, so normalize before comparing.
+                content = bundle.read("data/demo/function/load.mcfunction").decode("utf-8")
+            self.assertEqual(content.replace("\r\n", "\n").strip(), "say fallback")
 
     def test_universal_guard_and_complete_overlay_layers(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
