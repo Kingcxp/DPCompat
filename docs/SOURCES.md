@@ -14,6 +14,7 @@ DPCompat treats version facts as executable compatibility data. Release records,
 - [Java Edition 1.21.11](https://www.minecraft.net/en-us/article/minecraft-java-edition-1-21-11) — format 94.1; gamerule registry names, tick-based world-border time, filtered loot and Environment Attributes.
 - [Java Edition 26.1](https://www.minecraft.net/en-us/article/minecraft-java-edition-26-1) — format 101.1, Java 25, world clocks and recipe changes.
 - [Java Edition 26.2](https://www.minecraft.net/en-us/article/minecraft-java-edition-26-2) — format 107.1 and sulfur-cube archetypes.
+- [Java Edition 26.3](https://www.minecraft.net/en-us/article/minecraft-java-edition-26-3) — format 121.0, Java 25, the 26.3 item components, loot-schema discriminators, trim-material `palette_id`, and the world-generation rewrite that DPCompat refuses. Field names and registry directories were additionally verified against the vanilla 26.3 data pack shipped in the official server JAR.
 
 The same release URLs live in `dpcompat/data/releases.json`; feature records live in `dpcompat/data/features.json`; every built-in rule is mapped in `dpcompat/migrations/sources.py`. The registry refuses any rule without at least one source URL.
 

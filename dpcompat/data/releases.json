@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updated": "2026-07-20",
+  "updated": "2026-09-15",
   "releases": [
     {
       "game_version": "1.21.4",
@@ -91,6 +91,21 @@
       "note": "Chaos Cubed",
       "capabilities": ["sulfur_cube_archetype"],
       "official_url": "https://www.minecraft.net/en-us/article/minecraft-java-edition-26-2"
+    },
+    {
+      "game_version": "26.3",
+      "pack_format": [121, 0],
+      "release_date": "2026-09-15",
+      "java_major": 25,
+      "note": "Wilderness Bound",
+      "capabilities": [
+        "slot_source",
+        "decorated_pot_pattern",
+        "block_transformer",
+        "loot_schema_v2",
+        "worldgen_feature_inline_config"
+      ],
+      "official_url": "https://www.minecraft.net/en-us/article/minecraft-java-edition-26-3"
     }
   ]
 }

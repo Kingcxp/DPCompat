@@ -342,6 +342,45 @@ _BUILTIN_PLUGIN_DEFS: tuple[tuple[str, str, str, tuple[str, ...], str], ...] = (
         ("recipe.syntax-and-types@101.1",),
         "26.1",
     ),
+    (
+        "item-components@121.0",
+        "26.3 物品组件",
+        "拆分 swing_animation、移除 map_color，并在 pot_decorations 的旧列表与 26.3 面映射之间转换。",
+        (
+            "item-components.swing-animation-split@121.0",
+            "item-components.map-color-removed@121.0",
+            "item-components.pot-decorations-faces@121.0",
+        ),
+        "26.3",
+    ),
+    (
+        "environment-attributes@121.0",
+        "26.3 环境属性",
+        "重命名 gameplay/bed_rule 的 explodes 字段；destroy_on_leave 降级阻断。",
+        ("environment-attributes.bed-rule-fields@121.0",),
+        "26.3",
+    ),
+    (
+        "trim-materials@121.0",
+        "26.3 盔甲纹饰材料",
+        "把 asset_name 重命名为 palette_id；override_armor_assets 迁往资源包，升级阻断。",
+        ("registry.trim-material-palette-id@121.0",),
+        "26.3",
+    ),
+    (
+        "loot@121.0",
+        "26.3 战利品表结构",
+        "把战利品函数/条件/奖池的判别字段迁移到 type、condition 与 modifier。",
+        ("loot.function-condition-and-pool-keys@121.0",),
+        "26.3",
+    ),
+    (
+        "worldgen@121.0",
+        "26.3 世界生成",
+        "26.3 重写 feature/carver 注册表并改为单精度密度函数，等价性无法证明，一律阻断并要求作者 fallback。",
+        ("worldgen.registry-and-config@121.0",),
+        "26.3",
+    ),
 )
 
 
@@ -492,6 +531,39 @@ _BUILTIN_PLUGIN_L10N: dict[str, dict[str, tuple[str, str]]] = {
             "26.1 recipe subset",
             "Convert reversible result forms and default fields; new recipe types such as "
             "crafting_dye and imbue are blocked.",
+        )
+    },
+    "item-components@121.0": {
+        "en": (
+            "26.3 item components",
+            "Split swing_animation, drop map_color, and convert pot_decorations between the legacy "
+            "list and the 26.3 face map.",
+        )
+    },
+    "environment-attributes@121.0": {
+        "en": (
+            "26.3 environment attributes",
+            "Rename the gameplay/bed_rule explodes field; destroy_on_leave blocks the downgrade.",
+        )
+    },
+    "trim-materials@121.0": {
+        "en": (
+            "26.3 trim materials",
+            "Rename asset_name to palette_id; override_armor_assets moved to the resource pack and blocks the upgrade.",
+        )
+    },
+    "loot@121.0": {
+        "en": (
+            "26.3 loot schema",
+            "Move loot function, condition, and pool discriminators to type, condition, and modifier.",
+        )
+    },
+    "worldgen@121.0": {
+        "en": (
+            "26.3 world generation",
+            "26.3 rewrote the feature/carver registries and switched density functions to single "
+            "precision, so equivalence cannot be proven and every target is blocked pending an "
+            "author fallback.",
         )
     },
 }

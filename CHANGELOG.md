@@ -4,12 +4,15 @@
 
 ### Added
 
+- Minecraft 26.3 (format 121.0, Java 25, "Wilderness Bound") is registered, so it is selectable as a target and its new-only syntax blocks downgrades: `block_transformer`, `decorated_pot_pattern`, `context_int_provider`/`context_float_provider`, and `slot_source` resources, the `/posteffect` and `/compute` commands, `item fill`/`item override`, and the 26.3 item components and registries.
+- Migration rules for the 107.1 → 121.0 boundary: `swing_animation` splits into `attack_animation` + `interact_animation` (and merges back only when both are equal), `map_color` is dropped on upgrade exactly as the game strips it, `pot_decorations` converts between the legacy list and the 26.3 face map, the `gameplay/bed_rule` environment attribute renames `explodes`, trim materials rename `asset_name` to `palette_id`, and loot functions/conditions/pool entries move their discriminators to `type`, `condition`, and `modifier`.
 - TUI: a "Detect source" action runs the pack detector without building targets, reporting the inferred format, candidates, and evidence diagnostics; a plan-only checkbox evaluates every target without writing ZIPs (`emit_archives=False`).
 - TUI: build controls are disabled with a localized running label while a worker owns them, and the completion notification now distinguishes all-success from partial failure. `compatibility-report.json` is written next to the output on real builds instead of only being promised in the log.
 - CLI: `dpcompat plugin market search QUERY` is a first-class alias of `plugin market list --query QUERY`, matching the plugin-development documentation.
 
 ### Changed
 
+- Migration coverage: the 26.3 world-generation rewrite is refused instead of approximated — 26.3 moved `worldgen/configured_feature`/`configured_carver` to `worldgen/feature`/`carver` with inlined config *and* switched density functions to single precision, so a syntactically correct rewrite would still change generated terrain; affected targets now fail closed with `worldgen-schema-rewrite-required` until an author fallback exists. Removed 26.3 constructs (`minecraft:reference`, `minecraft:value_check`, `minecraft:block_state_property`) and the behaviour-changed `minecraft:exploration_map` are diagnosed rather than rewritten.
 - Migration coverage: downgrading `click_event` actions `custom`/`show_dialog` (introduced with format 80 / 1.21.6) now fails closed instead of silently emitting events older releases cannot parse; `/test` (format 71) and the world-clock `/time of|pause|resume|rate` forms plus `query <timeline>` (format 101.1) are registered as command-too-new evidence in `features.json`/scanner.
 - Marketplace installs verify that the downloaded file declares the requested plugin id before writing it into the store; broken catalog entries are skipped with a warning instead of hiding the whole repository or disappearing silently.
 

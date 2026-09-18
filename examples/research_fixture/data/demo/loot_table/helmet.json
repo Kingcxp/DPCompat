@@ -1,10 +1,44 @@
 {
   "type": "minecraft:generic",
-  "pools": [],
+  "pools": [
+    {
+      "rolls": 1,
+      "conditions": [
+        {
+          "condition": "minecraft:survives_explosion"
+        }
+      ],
+      "functions": [
+        {
+          "function": "minecraft:set_count",
+          "count": 1
+        }
+      ],
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "minecraft:iron_helmet"
+        },
+        {
+          "type": "minecraft:tag",
+          "name": "minecraft:trim_templates",
+          "expand": true
+        }
+      ]
+    }
+  ],
   "components": {
     "minecraft:dyed_color": {
       "rgb": 255,
       "show_in_tooltip": false
+    },
+    "minecraft:pot_decorations": [
+      "minecraft:brick",
+      "minecraft:flow_pottery_sherd"
+    ],
+    "minecraft:swing_animation": {
+      "type": "stab",
+      "duration": 4
     }
   }
 }

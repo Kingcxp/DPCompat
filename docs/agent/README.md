@@ -17,7 +17,7 @@
 
 DPCompat 是一个**保守的** Minecraft Java Edition 数据包兼容性编译器：
 
-- 识别输入数据包的 `pack.mcmeta` 声明的 pack format（61 → 107.1）；
+- 识别输入数据包的 `pack.mcmeta` 声明的 pack format（61 → 121.0）；
 - 对每个已登记的目标正式版，从**同一份有效来源**独立构建，应用跨边界的迁移规则；
 - 规则**失败关闭**：不能证明等价的转换被记为 `lossy`/`unsupported`/`unknown` 并默认阻断目标，而不是生成"可能能加载"的包；
 - 通过门禁的目标输出确定性 ZIP；多目标时自动组装 pack overlay 通用包。

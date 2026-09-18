@@ -51,11 +51,11 @@ jobs:
         run: make smoke
 
       - name: Plan a multi-target migration
-        run: uv run dpcompat plan examples/simple_pack --target 1.21.4 --target 26.2
+        run: uv run dpcompat plan examples/simple_pack --target 1.21.4 --target 26.3
 
       - name: Build archives and validate the universal ZIP
         run: |
-          uv run dpcompat build examples/simple_pack --target 1.21.4 --target 1.21.9 --target 26.2 --output dist
+          uv run dpcompat build examples/simple_pack --target 1.21.4 --target 1.21.9 --target 26.3 --output dist
           python -m zipfile -t dist/datapack-universal-1.21.4-plus.zip
 
       - name: Package the distribution

@@ -48,6 +48,21 @@
 
 官方新增 sulfur-cube archetype。旧版本没有该 registry 的等价物，因此 scanner 在降级时阻断，而不是删除资源。来源：[26.2 正式版说明](https://www.minecraft.net/en-us/article/minecraft-java-edition-26-2)。
 
+## 26.3 / format 121.0
+
+官方把数据包格式从 107.1 直接推到 121.0，并同时改写物品组件、战利品表结构、环境属性、盔甲纹饰材料与世界生成。实现只做旧/新形状都能从正式说明与**原版 26.3 数据包**同时确认的子集：
+
+- `minecraft:swing_animation` 拆分为 `minecraft:attack_animation` 与 `minecraft:interact_animation`（官方说明两者取同值即与旧组件等价，差异仅在 `/swing` 命令与实体掉落物）；降级只在两者完全相同时合并，否则阻断；
+- `minecraft:map_color` 被移除，游戏在加载时自行剥离，因此升级时删除该组件即为等价行为；降级无事可做；
+- `minecraft:pot_decorations` 由“4 个物品 ID 的列表”变为“面→物品堆”的映射；旧列表顺序取自原版 `PotDecorations.ordered()`：`back, left, right, front`；旧格式缺省项等价于 brick，因此升级时补齐 brick 以保留掉落行为；降级遇到空面（26.3 掉落物为空）或带组件/数量的物品堆时阻断；
+- 环境属性 `minecraft:gameplay/bed_rule` 的 `explodes` 改名为 `destroy_on_use`；新增的 `destroy_on_leave` 在降级时阻断；
+- `trim_material` 的 `asset_name` 改名为 `palette_id`（字段名以原版 26.3 数据包的 `data/minecraft/trim_material/*.json` 为准，正式说明中的 `palette` 是简写）；`override_armor_assets` 迁往资源包 equipment asset，升级时阻断；
+- 战利品表/物品修饰器/谓词：判别字段 `function`→`type`、条件 `conditions`（列表）→`condition`（单值或 `minecraft:all_of`）、奖池 `functions`→`modifier`、`minecraft:tag` 条目 `name`→`items`、`set_loot_table` 的 `name`→`loot_table_id` 并移除已废弃的 `type`。降级时命名空间 ID 会还原为旧版 `minecraft:reference` 对象。
+
+明确**拒绝**的部分：26.3 把 `worldgen/configured_feature`/`configured_carver` 搬到 `worldgen/feature`/`carver` 并把 config 内联，同时新增 `block_state_provider`/`material_rule`/`material_condition`，还把密度函数改为单精度求值——语法可以改写但生成结果不等价，因此 `worldgen.registry-and-config@121.0` 只出诊断、要求作者 fallback。被移除的 `minecraft:reference`、`minecraft:value_check`、`minecraft:block_state_property`、语义改变的 `minecraft:exploration_map`，以及数字 provider 改名（`sum`→`add` 等）同样只诊断不猜测。
+
+来源：[26.3 正式版说明](https://www.minecraft.net/en-us/article/minecraft-java-edition-26-3)。
+
 ## 证据与测试结论
 
 `examples/research_fixture` 是按上述官方形状构造的仓库夹具，用于复现和回归；它不是任何真实作者数据包，也不能替代原版 server/GameTest。任何新增自动规则都必须同时更新 `sources.py`、正反向测试、冲突测试、版本矩阵和本审计。

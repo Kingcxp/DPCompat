@@ -111,6 +111,46 @@
       ],
       "downgrade": "unsupported",
       "source": "https://www.minecraft.net/en-us/article/minecraft-java-edition-26-2"
+    },
+    {
+      "id": "wilderness_bound_resources",
+      "min_format": [
+        121,
+        0
+      ],
+      "resource_types": [
+        "block_transformer",
+        "decorated_pot_pattern",
+        "context_int_provider",
+        "context_float_provider",
+        "slot_source"
+      ],
+      "commands": [
+        "posteffect",
+        "compute",
+        "item fill",
+        "item override"
+      ],
+      "downgrade": "unsupported",
+      "source": "https://www.minecraft.net/en-us/article/minecraft-java-edition-26-3",
+      "identifiers": [
+        "minecraft:attack_animation",
+        "minecraft:interact_animation",
+        "minecraft:provides_pottery_pattern",
+        "minecraft:cooking_fuel",
+        "minecraft:brewing_fuel",
+        "minecraft:block_transformer",
+        "minecraft:sign_text_front",
+        "minecraft:sign_text_back",
+        "minecraft:waxed",
+        "minecraft:compostable",
+        "minecraft:villager_food",
+        "minecraft:mob_visibility",
+        "minecraft:cushion/color",
+        "minecraft:natural_mob_spawns",
+        "minecraft:straw_bed_rule",
+        "minecraft:brewing"
+      ]
     }
   ]
 }

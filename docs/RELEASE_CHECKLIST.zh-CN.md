@@ -44,7 +44,7 @@ make smoke
 make build
 make clean
 uv run dpcompat build examples/simple_pack \
-  --target 1.21.4 --target 1.21.9 --target 26.2 --output dist
+  --target 1.21.4 --target 1.21.9 --target 26.3 --output dist
 python -m zipfile -t dist/datapack-universal-1.21.4-plus.zip
 ```
 
@@ -56,7 +56,7 @@ python -m zipfile -t dist/datapack-universal-1.21.4-plus.zip
 
 ## 原版服务端与真实包
 
-- [ ] format 61、71、80、81、88.0、94.1、101.1、107.1 分别用匹配正式版 server JAR 加载；
+- [ ] format 61、71、80、81、88.0、94.1、101.1、107.1、121.0 分别用匹配正式版 server JAR 加载；
 - [ ] 26.1+ 使用 Java 25；
 - [ ] 保存 server 版本、Java、命令、日志和报告哈希；
 - [ ] 真实数据包的作者行为/GameTest 在每个发布目标通过；

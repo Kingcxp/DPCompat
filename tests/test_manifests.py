@@ -24,8 +24,12 @@ class ManifestTests(unittest.TestCase):
         identifiers = identifier_minimums()
         self.assertIn("sulfur_cube_archetype", resources)
         self.assertEqual(resources["sulfur_cube_archetype"][0], PackFormat(107, 1))
+        self.assertIn("block_transformer", resources)
+        self.assertEqual(resources["block_transformer"][0], PackFormat(121, 0))
         self.assertIn("minecraft:iron_chain", identifiers)
         self.assertEqual(identifiers["minecraft:iron_chain"][0], PackFormat(88))
+        self.assertIn("minecraft:attack_animation", identifiers)
+        self.assertEqual(identifiers["minecraft:attack_animation"][0], PackFormat(121, 0))
 
     def test_feature_without_matcher_is_rejected(self) -> None:
         from dpcompat.manifests import FeatureManifest

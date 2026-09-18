@@ -35,11 +35,16 @@ KNOWN_RESOURCE_TYPES = frozenset(
         "advancement",
         "banner_pattern",
         "biome",
+        "block_transformer",
         "cat_sound_variant",
         "cat_variant",
+        "chat_type",
         "chicken_sound_variant",
+        "context_float_provider",
+        "context_int_provider",
         "cow_sound_variant",
         "damage_type",
+        "decorated_pot_pattern",
         "dialog",
         "dimension",
         "dimension_type",
@@ -58,6 +63,7 @@ KNOWN_RESOURCE_TYPES = frozenset(
         "pig_variant",
         "predicate",
         "recipe",
+        "slot_source",
         "structure",
         "structure_set",
         "sulfur_cube_archetype",
@@ -66,6 +72,7 @@ KNOWN_RESOURCE_TYPES = frozenset(
         "test_instance",
         "timeline",
         "trade_set",
+        "trial_spawner",
         "trim_material",
         "trim_pattern",
         "villager_trade",
@@ -362,7 +369,11 @@ def _scan_json_semantics(
             if diagnostic:
                 diagnostics.append(diagnostic)
 
-        if node.get("function") == "minecraft:discard":
+        # 26.3 renamed the loot-function discriminator from ``function`` to ``type``; accept
+        # both so a 26.3 source pack is still recognized when targeting older releases.
+        loot_function_id = node.get("function") or node.get("type")
+
+        if loot_function_id == "minecraft:discard":
             minimum = PackFormat(94, 1)
             inferred = _record_evidence(
                 evidence,
@@ -384,7 +395,7 @@ def _scan_json_semantics(
             if diagnostic:
                 diagnostics.append(diagnostic)
 
-        if node.get("function") == "minecraft:filtered" and "on_fail" in node:
+        if loot_function_id == "minecraft:filtered" and "on_fail" in node:
             minimum = PackFormat(94, 1)
             inferred = _record_evidence(
                 evidence,

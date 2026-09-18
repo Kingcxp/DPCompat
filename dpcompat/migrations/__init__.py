@@ -18,6 +18,15 @@ from .resources import FilteredLootRule, TestEnvironmentClockRule, TimelineClock
 from .strict_json import StrictJsonRule
 from .structures import StructureEntityNbtRule
 from .text import TextComponentRule
+from .wilderness import (
+    BedRuleFieldsRule,
+    LootSchemaKeysRule,
+    MapColorRemovalRule,
+    PotDecorationsFacesRule,
+    SwingAnimationSplitRule,
+    TrimMaterialPaletteRule,
+    WorldgenSchemaRule,
+)
 from .worldborder import WorldBorderTimeRule
 
 BUILTIN_RULES: tuple[MigrationRule, ...] = (
@@ -35,6 +44,13 @@ BUILTIN_RULES: tuple[MigrationRule, ...] = (
     TimeCheckClockRule(),
     Recipe26Rule(),
     TestEnvironmentClockRule(),
+    SwingAnimationSplitRule(),
+    MapColorRemovalRule(),
+    PotDecorationsFacesRule(),
+    BedRuleFieldsRule(),
+    TrimMaterialPaletteRule(),
+    LootSchemaKeysRule(),
+    WorldgenSchemaRule(),
     StrictJsonRule(),
 )
 

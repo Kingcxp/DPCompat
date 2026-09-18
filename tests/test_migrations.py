@@ -12,6 +12,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 
 from dpcompat import nbt
 from dpcompat.commands import (
@@ -22,6 +23,7 @@ from dpcompat.commands import (
 )
 from dpcompat.entity_data import downgrade_entity_nbt, upgrade_entity_nbt
 from dpcompat.fallback import apply_fallback_files, load_fallback, resolve_with_fallback
+from dpcompat.migrations import BUILTIN_RULES
 from dpcompat.migrations.base import MigrationContext
 from dpcompat.migrations.commands import HorseSaddleSlotRule, SpawnRotationRule
 from dpcompat.migrations.entities import EntitySnbtRule
@@ -31,6 +33,15 @@ from dpcompat.migrations.recipes import Recipe26Rule, TimeCheckClockRule
 from dpcompat.migrations.resources import FilteredLootRule, TestEnvironmentClockRule, TimelineClockRule
 from dpcompat.migrations.structures import StructureEntityNbtRule
 from dpcompat.migrations.text import TextComponentRule
+from dpcompat.migrations.wilderness import (
+    BedRuleFieldsRule,
+    LootSchemaKeysRule,
+    MapColorRemovalRule,
+    PotDecorationsFacesRule,
+    SwingAnimationSplitRule,
+    TrimMaterialPaletteRule,
+    WorldgenSchemaRule,
+)
 from dpcompat.models import BuildPolicy, Compatibility, PackFormat, Severity
 from dpcompat.text_components import (
     TextComponentMigrationError,
@@ -802,6 +813,527 @@ class MacroAndNestedEntityTextTests(unittest.TestCase):
                 {"entity-text-component-unknown"},
             )
             self.assertTrue(all(item.compatibility == Compatibility.UNKNOWN for item in result.diagnostics))
+
+
+class WildernessBoundRuleTests(unittest.TestCase):
+    """26.3 (format 121.0) boundary rules."""
+
+    def _run(self, root: Path, rule: object, source: int | list[int], target: int | list[int]) -> list[Any]:
+        result = rule.apply(  # type: ignore[attr-defined]
+            MigrationContext(root, PackFormat.parse(source), PackFormat.parse(target), BuildPolicy())
+        )
+        return list(result.diagnostics)
+
+    def _text(self, root: Path, relative: str) -> str:
+        return (root / relative).read_text(encoding="utf-8")
+
+    def test_swing_animation_splits_on_upgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [107, 1])
+            write(
+                root,
+                "data/demo/item_modifier/swing.json",
+                '{"components":{"minecraft:swing_animation":{"type":"stab","duration":4}}}\n',
+            )
+            self._run(root, SwingAnimationSplitRule(), [107, 1], [121, 0])
+            value = json.loads(self._text(root, "data/demo/item_modifier/swing.json"))
+            components = value["components"]
+            self.assertNotIn("minecraft:swing_animation", components)
+            self.assertEqual(components["minecraft:attack_animation"], {"type": "stab", "duration": 4})
+            self.assertEqual(components["minecraft:interact_animation"], {"type": "stab", "duration": 4})
+
+    def test_swing_animation_split_is_idempotent(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [107, 1])
+            write(
+                root,
+                "data/demo/item_modifier/swing.json",
+                '{"components":{"minecraft:swing_animation":{"type":"whack"}}}\n',
+            )
+            rule = SwingAnimationSplitRule()
+            self._run(root, rule, [107, 1], [121, 0])
+            once = self._text(root, "data/demo/item_modifier/swing.json")
+            self._run(root, rule, [107, 1], [121, 0])
+            self.assertEqual(self._text(root, "data/demo/item_modifier/swing.json"), once)
+
+    def test_swing_animation_split_conflict_blocks(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [107, 1])
+            write(
+                root,
+                "data/demo/item_modifier/swing.json",
+                '{"components":{"minecraft:swing_animation":{"type":"whack"},'
+                '"minecraft:attack_animation":{"type":"stab"}}}\n',
+            )
+            diagnostics = self._run(root, SwingAnimationSplitRule(), [107, 1], [121, 0])
+            self.assertEqual({item.code for item in diagnostics}, {"swing-animation-split-conflict"})
+
+    def test_animation_components_merge_when_equal(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [121, 0])
+            write(
+                root,
+                "data/demo/item_modifier/swing.json",
+                '{"components":{"minecraft:attack_animation":{"type":"stab","duration":4},'
+                '"minecraft:interact_animation":{"type":"stab","duration":4}}}\n',
+            )
+            self._run(root, SwingAnimationSplitRule(), [121, 0], [107, 1])
+            components = json.loads(self._text(root, "data/demo/item_modifier/swing.json"))["components"]
+            self.assertEqual(components, {"minecraft:swing_animation": {"type": "stab", "duration": 4}})
+
+    def test_animation_components_differing_cannot_downgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [121, 0])
+            write(
+                root,
+                "data/demo/item_modifier/swing.json",
+                '{"components":{"minecraft:attack_animation":{"type":"stab"},'
+                '"minecraft:interact_animation":{"type":"whack"}}}\n',
+            )
+            diagnostics = self._run(root, SwingAnimationSplitRule(), [121, 0], [107, 1])
+            self.assertEqual({item.code for item in diagnostics}, {"animation-components-cannot-downgrade"})
+
+    def test_map_color_is_dropped_on_upgrade_only(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [107, 1])
+            write(
+                root,
+                "data/demo/item_modifier/map.json",
+                '{"components":{"minecraft:map_color":12345,"minecraft:custom_name":"x"}}\n',
+            )
+            rule = MapColorRemovalRule()
+            self._run(root, rule, [107, 1], [121, 0])
+            components = json.loads(self._text(root, "data/demo/item_modifier/map.json"))["components"]
+            self.assertEqual(components, {"minecraft:custom_name": "x"})
+            self._run(root, rule, [121, 0], [107, 1])
+            self.assertEqual(
+                json.loads(self._text(root, "data/demo/item_modifier/map.json"))["components"],
+                {"minecraft:custom_name": "x"},
+            )
+
+    def test_pot_decorations_list_uses_documented_face_order(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [107, 1])
+            write(
+                root,
+                "data/demo/item_modifier/pot.json",
+                '{"components":{"minecraft:pot_decorations":["minecraft:brick","minecraft:angler_pottery_sherd"]}}\n',
+            )
+            self._run(root, PotDecorationsFacesRule(), [107, 1], [121, 0])
+            faces = json.loads(self._text(root, "data/demo/item_modifier/pot.json"))["components"][
+                "minecraft:pot_decorations"
+            ]
+            self.assertEqual(
+                faces,
+                {
+                    "back": {"id": "minecraft:brick"},
+                    "left": {"id": "minecraft:angler_pottery_sherd"},
+                    "right": {"id": "minecraft:brick"},
+                    "front": {"id": "minecraft:brick"},
+                },
+            )
+
+    def test_pot_decorations_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [107, 1])
+            original = (
+                '{"components":{"minecraft:pot_decorations":'
+                '["minecraft:brick","minecraft:flow_pottery_sherd","minecraft:brick",'
+                '"minecraft:guster_pottery_sherd"]}}\n'
+            )
+            write(root, "data/demo/item_modifier/pot.json", original)
+            rule = PotDecorationsFacesRule()
+            self._run(root, rule, [107, 1], [121, 0])
+            self._run(root, rule, [121, 0], [107, 1])
+            self.assertEqual(json.loads(self._text(root, "data/demo/item_modifier/pot.json")), json.loads(original))
+
+    def test_pot_decorations_empty_face_is_lossy_on_downgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [121, 0])
+            write(
+                root,
+                "data/demo/item_modifier/pot.json",
+                '{"components":{"minecraft:pot_decorations":{"front":{"id":"minecraft:angler_pottery_sherd"}}}}\n',
+            )
+            diagnostics = self._run(root, PotDecorationsFacesRule(), [121, 0], [107, 1])
+            self.assertEqual({item.code for item in diagnostics}, {"pot-decorations-empty-face"})
+            entries = json.loads(self._text(root, "data/demo/item_modifier/pot.json"))["components"][
+                "minecraft:pot_decorations"
+            ]
+            self.assertEqual(
+                entries,
+                [
+                    "minecraft:brick",
+                    "minecraft:brick",
+                    "minecraft:brick",
+                    "minecraft:angler_pottery_sherd",
+                ],
+            )
+
+    def test_pot_decorations_item_data_cannot_downgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [121, 0])
+            write(
+                root,
+                "data/demo/item_modifier/pot.json",
+                json.dumps(
+                    {
+                        "components": {
+                            "minecraft:pot_decorations": {
+                                "back": {"id": "minecraft:brick"},
+                                "left": {"id": "minecraft:brick"},
+                                "right": {"id": "minecraft:brick"},
+                                "front": {"id": "minecraft:brick", "count": 2},
+                            }
+                        }
+                    }
+                ),
+            )
+            diagnostics = self._run(root, PotDecorationsFacesRule(), [121, 0], [107, 1])
+            self.assertEqual({item.code for item in diagnostics}, {"pot-decorations-face-data-cannot-downgrade"})
+
+    def test_bed_rule_field_is_renamed_both_ways(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [107, 1])
+            write(
+                root,
+                "data/demo/dimension_type/test.json",
+                '{"attributes":{"minecraft:gameplay/bed_rule":{"can_sleep":"always","explodes":true}}}\n',
+            )
+            rule = BedRuleFieldsRule()
+            self._run(root, rule, [107, 1], [121, 0])
+            rule_value = json.loads(self._text(root, "data/demo/dimension_type/test.json"))["attributes"][
+                "minecraft:gameplay/bed_rule"
+            ]
+            self.assertEqual(rule_value, {"can_sleep": "always", "destroy_on_use": True})
+            self._run(root, rule, [121, 0], [107, 1])
+            rule_value = json.loads(self._text(root, "data/demo/dimension_type/test.json"))["attributes"][
+                "minecraft:gameplay/bed_rule"
+            ]
+            self.assertEqual(rule_value, {"can_sleep": "always", "explodes": True})
+
+    def test_bed_rule_destroy_on_leave_blocks_downgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [121, 0])
+            write(
+                root,
+                "data/demo/dimension_type/test.json",
+                '{"attributes":{"minecraft:gameplay/bed_rule":{"destroy_on_use":true,"destroy_on_leave":true}}}\n',
+            )
+            diagnostics = self._run(root, BedRuleFieldsRule(), [121, 0], [107, 1])
+            self.assertEqual({item.code for item in diagnostics}, {"bed-rule-destroy-on-leave-cannot-downgrade"})
+
+    def test_trim_material_asset_field_is_renamed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [107, 1])
+            write(
+                root,
+                "data/demo/trim_material/quartz.json",
+                '{"asset_name":"minecraft:quartz","description":"x"}\n',
+            )
+            rule = TrimMaterialPaletteRule()
+            self._run(root, rule, [107, 1], [121, 0])
+            value = json.loads(self._text(root, "data/demo/trim_material/quartz.json"))
+            self.assertEqual(value, {"palette_id": "minecraft:quartz", "description": "x"})
+            self._run(root, rule, [121, 0], [107, 1])
+            self.assertEqual(
+                json.loads(self._text(root, "data/demo/trim_material/quartz.json")),
+                {"asset_name": "minecraft:quartz", "description": "x"},
+            )
+
+    def test_trim_material_overrides_block_upgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [107, 1])
+            write(
+                root,
+                "data/demo/trim_material/quartz.json",
+                '{"asset_name":"minecraft:quartz","override_armor_assets":{"minecraft:iron":"x"}}\n',
+            )
+            diagnostics = self._run(root, TrimMaterialPaletteRule(), [107, 1], [121, 0])
+            self.assertEqual({item.code for item in diagnostics}, {"trim-material-overrides-cannot-upgrade"})
+
+    def test_loot_table_keys_upgrade_to_121(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [107, 1])
+            write(
+                root,
+                "data/demo/loot_table/blocks/stone.json",
+                json.dumps(
+                    {
+                        "type": "minecraft:block",
+                        "pools": [
+                            {
+                                "rolls": 1,
+                                "conditions": [{"condition": "minecraft:survives_explosion"}],
+                                "functions": [{"function": "minecraft:set_count", "count": 1}],
+                                "entries": [
+                                    {
+                                        "type": "minecraft:item",
+                                        "name": "minecraft:stone",
+                                        "conditions": [
+                                            {"condition": "minecraft:survives_explosion"},
+                                            {"condition": "minecraft:random_chance", "chance": 0.5},
+                                        ],
+                                    },
+                                    {"type": "minecraft:tag", "name": "minecraft:stone_buttons", "expand": True},
+                                ],
+                            }
+                        ],
+                    }
+                ),
+            )
+            self._run(root, LootSchemaKeysRule(), [107, 1], [121, 0])
+            table = json.loads(self._text(root, "data/demo/loot_table/blocks/stone.json"))
+            pool = table["pools"][0]
+            self.assertEqual(pool["condition"], {"type": "minecraft:survives_explosion"})
+            self.assertEqual(pool["modifier"], [{"type": "minecraft:set_count", "count": 1}])
+            entry = pool["entries"][0]
+            self.assertEqual(
+                entry["condition"],
+                {
+                    "type": "minecraft:all_of",
+                    "terms": [
+                        {"type": "minecraft:survives_explosion"},
+                        {"type": "minecraft:random_chance", "chance": 0.5},
+                    ],
+                },
+            )
+            self.assertEqual(
+                pool["entries"][1], {"type": "minecraft:tag", "items": "minecraft:stone_buttons", "expand": True}
+            )
+
+    def test_loot_table_keys_downgrade_from_121(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [121, 0])
+            write(
+                root,
+                "data/demo/loot_table/blocks/stone.json",
+                json.dumps(
+                    {
+                        "type": "minecraft:block",
+                        "pools": [
+                            {
+                                "rolls": 1,
+                                "condition": "minecraft:tool/can_silk_touch",
+                                "modifier": {"type": "minecraft:set_count", "count": 1},
+                                "entries": [
+                                    {"type": "minecraft:item", "name": "minecraft:stone"},
+                                    {"type": "minecraft:tag", "items": "minecraft:stone_buttons"},
+                                ],
+                            }
+                        ],
+                    }
+                ),
+            )
+            self._run(root, LootSchemaKeysRule(), [121, 0], [107, 1])
+            pool = json.loads(self._text(root, "data/demo/loot_table/blocks/stone.json"))["pools"][0]
+            self.assertEqual(
+                pool["conditions"],
+                [{"condition": "minecraft:reference", "name": "minecraft:tool/can_silk_touch"}],
+            )
+            self.assertEqual(pool["functions"], [{"function": "minecraft:set_count", "count": 1}])
+            self.assertEqual(pool["entries"][1], {"type": "minecraft:tag", "name": "minecraft:stone_buttons"})
+
+    def test_loot_table_level_functions_become_a_modifier(self) -> None:
+        # A loot table may carry its own functions next to its pools; the vanilla data pack
+        # uses this for minecraft:explosion_decay.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [107, 1])
+            write(
+                root,
+                "data/demo/loot_table/blocks/beetroots.json",
+                json.dumps(
+                    {
+                        "type": "minecraft:block",
+                        "functions": [{"function": "minecraft:explosion_decay"}],
+                        "pools": [],
+                    }
+                ),
+            )
+            rule = LootSchemaKeysRule()
+            self._run(root, rule, [107, 1], [121, 0])
+            table = json.loads(self._text(root, "data/demo/loot_table/blocks/beetroots.json"))
+            self.assertEqual(table["modifier"], [{"type": "minecraft:explosion_decay"}])
+            self.assertNotIn("functions", table)
+            self._run(root, rule, [121, 0], [107, 1])
+            table = json.loads(self._text(root, "data/demo/loot_table/blocks/beetroots.json"))
+            self.assertEqual(table["functions"], [{"function": "minecraft:explosion_decay"}])
+
+    def test_inline_loot_table_entry_is_migrated(self) -> None:
+        # A minecraft:loot_table pool entry may embed a whole loot table in its value field.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [107, 1])
+            write(
+                root,
+                "data/demo/loot_table/equipment/trial.json",
+                json.dumps(
+                    {
+                        "type": "minecraft:equipment",
+                        "pools": [
+                            {
+                                "rolls": 1,
+                                "entries": [
+                                    {
+                                        "type": "minecraft:loot_table",
+                                        "value": {
+                                            "pools": [
+                                                {
+                                                    "rolls": 1,
+                                                    "conditions": [{"condition": "minecraft:random_chance"}],
+                                                    "entries": [{"type": "minecraft:item", "name": "minecraft:stick"}],
+                                                }
+                                            ]
+                                        },
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ),
+            )
+            rule = LootSchemaKeysRule()
+            self._run(root, rule, [107, 1], [121, 0])
+            table = json.loads(self._text(root, "data/demo/loot_table/equipment/trial.json"))
+            inner = table["pools"][0]["entries"][0]["value"]["pools"][0]
+            self.assertEqual(inner["condition"], {"type": "minecraft:random_chance"})
+            self.assertNotIn("conditions", inner)
+            self._run(root, rule, [121, 0], [107, 1])
+            inner = json.loads(self._text(root, "data/demo/loot_table/equipment/trial.json"))["pools"][0]["entries"][0][
+                "value"
+            ]["pools"][0]
+            self.assertEqual(inner["conditions"], [{"condition": "minecraft:random_chance"}])
+
+    def test_filtered_pass_branch_is_migrated_with_the_whole_rule_chain(self) -> None:
+        # 94.1 moves on_pass back to modifier, and the 121.0 rule then has to keep walking
+        # that slot: otherwise the nested function keeps the modern discriminator.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [121, 0])
+            write(
+                root,
+                "data/demo/item_modifier/filtered.json",
+                json.dumps(
+                    {
+                        "type": "minecraft:filtered",
+                        "item_filter": {"items": "minecraft:stone"},
+                        "on_pass": {"type": "minecraft:set_count", "count": 3},
+                    }
+                ),
+            )
+            context = MigrationContext(root, PackFormat(121, 0), PackFormat(61), BuildPolicy())
+            for rule in BUILTIN_RULES:
+                if rule.applies(context.source, context.target):
+                    rule.apply(context)
+            value = json.loads(self._text(root, "data/demo/item_modifier/filtered.json"))
+            self.assertEqual(value["function"], "minecraft:filtered")
+            self.assertEqual(value["modifier"], {"function": "minecraft:set_count", "count": 3})
+
+    def test_loot_predicate_file_discriminator_is_renamed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [107, 1])
+            write(
+                root,
+                "data/demo/predicate/tool/can_silk_touch.json",
+                json.dumps({"condition": "minecraft:match_tool", "predicate": {"items": "minecraft:shears"}}),
+            )
+            rule = LootSchemaKeysRule()
+            self._run(root, rule, [107, 1], [121, 0])
+            self.assertEqual(
+                json.loads(self._text(root, "data/demo/predicate/tool/can_silk_touch.json")),
+                {"type": "minecraft:match_tool", "predicate": {"items": "minecraft:shears"}},
+            )
+            self._run(root, rule, [121, 0], [107, 1])
+            self.assertEqual(
+                json.loads(self._text(root, "data/demo/predicate/tool/can_silk_touch.json")),
+                {"condition": "minecraft:match_tool", "predicate": {"items": "minecraft:shears"}},
+            )
+
+    def test_loot_removed_constructs_block_the_upgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [107, 1])
+            write(
+                root,
+                "data/demo/item_modifier/reference.json",
+                '{"function":"minecraft:reference","name":"minecraft:some_modifier"}\n',
+            )
+            write(
+                root,
+                "data/demo/predicate/value_check.json",
+                '{"condition":"minecraft:value_check","value":{"type":"minecraft:score","target":"x"},'
+                '"range":{"min":1}}\n',
+            )
+            diagnostics = self._run(root, LootSchemaKeysRule(), [107, 1], [121, 0])
+            self.assertEqual(
+                {item.code for item in diagnostics},
+                {"loot-reference-removed", "loot-condition-removed"},
+            )
+
+    def test_modern_time_check_predicate_downgrades_without_crashing(self) -> None:
+        # 26.3 uses ``type`` as the predicate discriminator and ``condition`` for the
+        # predicate value, which may be an object; the 101.1 rule must not assume a string.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [121, 0])
+            write(
+                root,
+                "data/demo/loot_table/blocks/stone.json",
+                json.dumps(
+                    {
+                        "type": "minecraft:block",
+                        "pools": [
+                            {
+                                "rolls": 1,
+                                "entries": [
+                                    {
+                                        "type": "minecraft:item",
+                                        "name": "minecraft:stone",
+                                        "condition": {
+                                            "type": "minecraft:time_check",
+                                            "clock": "minecraft:overworld",
+                                            "value": 1000,
+                                        },
+                                    },
+                                    {
+                                        "type": "minecraft:item",
+                                        "name": "minecraft:dirt",
+                                        "condition": {"type": "minecraft:random_chance", "chance": 0.5},
+                                    },
+                                ],
+                            }
+                        ],
+                    }
+                ),
+            )
+            context = MigrationContext(root, PackFormat(121, 0), PackFormat(94, 1), BuildPolicy())
+            for rule in BUILTIN_RULES:
+                if rule.applies(context.source, context.target):
+                    rule.apply(context)
+            table = json.loads(self._text(root, "data/demo/loot_table/blocks/stone.json"))
+            entries = table["pools"][0]["entries"]
+            self.assertEqual(entries[0]["conditions"], [{"condition": "minecraft:time_check", "value": 1000}])
+            self.assertEqual(entries[1]["conditions"], [{"condition": "minecraft:random_chance", "chance": 0.5}])
+
+    def test_worldgen_registry_move_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [107, 1])
+            write(root, "data/demo/worldgen/configured_feature/oak.json", '{"type":"minecraft:tree"}\n')
+            diagnostics = self._run(root, WorldgenSchemaRule(), [107, 1], [121, 0])
+            self.assertEqual({item.code for item in diagnostics}, {"worldgen-schema-rewrite-required"})
+            self.assertEqual(
+                self._text(root, "data/demo/worldgen/configured_feature/oak.json"), '{"type":"minecraft:tree"}\n'
+            )
+
+    def test_worldgen_registry_move_is_refused_on_downgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [121, 0])
+            write(root, "data/demo/worldgen/feature/oak.json", '{"type":"minecraft:tree"}\n')
+            diagnostics = self._run(root, WorldgenSchemaRule(), [121, 0], [107, 1])
+            self.assertEqual({item.code for item in diagnostics}, {"worldgen-schema-rewrite-required"})
+
+    def test_worldgen_rule_ignores_untouched_resources(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [107, 1])
+            write(root, "data/demo/worldgen/biome/plains.json", '{"temperature":0.8}\n')
+            diagnostics = self._run(root, WorldgenSchemaRule(), [107, 1], [121, 0])
+            self.assertEqual(diagnostics, [])
 
 
 if __name__ == "__main__":

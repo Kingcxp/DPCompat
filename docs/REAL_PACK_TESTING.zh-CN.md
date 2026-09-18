@@ -35,7 +35,7 @@ python -m zipfile -t dist/my-pack-1.21.11.zip
 
 ## 5. 匹配原版服务端
 
-为 61、71、80、81、88.0、94.1、101.1、107.1 各准备匹配的合法 server JAR；26.1+ 使用 Java 25。逐个运行：
+为 61、71、80、81、88.0、94.1、101.1、107.1、121.0 各准备匹配的合法 server JAR；26.1+ 使用 Java 25。逐个运行：
 
 ```bash
 uv run dpcompat server-check dist/my-pack-1.21.11.zip \

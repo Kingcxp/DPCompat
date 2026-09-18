@@ -205,7 +205,11 @@ class TimeCheckClockRule:
                 if not isinstance(node, dict):
                     return node
                 result = {key: walk(item) for key, item in node.items()}
-                if result.get("condition") not in {"minecraft:time_check", "time_check"}:
+                # 26.3 renamed the predicate discriminator from ``condition`` to ``type``,
+                # and ``condition`` now holds a predicate value that can be an object, so
+                # the membership test must not assume a string.
+                discriminator = result.get("condition") or result.get("type")
+                if not isinstance(discriminator, str) or discriminator not in {"minecraft:time_check", "time_check"}:
                     return result
                 if upgrading and "clock" not in result:
                     result["clock"] = "minecraft:overworld"

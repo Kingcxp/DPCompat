@@ -27,6 +27,7 @@ Minecraft 的变化同时涉及 JSON、命令、文本组件、物品组件、�
 | 1.21.11 | 94.1 | 21 |
 | 26.1 | 101.1 | 25 |
 | 26.2 | 107.1 | 25 |
+| 26.3 | 121.0 | 25 |
 
 每条记录都在 `dpcompat/data/releases.json` 中携带 Mojang 正式版链接。登记版本不等于“该版本的所有语义都可移植”；准确覆盖范围见 [`docs/VERSION_MATRIX.md`](docs/VERSION_MATRIX.md)。
 
@@ -100,7 +101,7 @@ uv run dpcompat build Bundle.zip --pack-root path/to/datapack --output dist
 
 ## 插件
 
-迁移规则以插件形式组织。每个插件声明它负责迁移到哪一个正式版本（`target_version`），内置规则分为 13 个具名插件（如 `gamerules@94.1` 负责 1.21.11、`clocks@101.1` 负责 26.1）；用户插件是 `.py` 或 `.json` 文件，安装后与内置插件一样可以浏览、启用、禁用：
+迁移规则以插件形式组织。每个插件声明它负责迁移到哪一个正式版本（`target_version`），内置规则分为 18 个具名插件（如 `gamerules@94.1` 负责 1.21.11、`clocks@101.1` 负责 26.1、`loot@121.0` 负责 26.3）；用户插件是 `.py` 或 `.json` 文件，安装后与内置插件一样可以浏览、启用、禁用：
 
 ```bash
 uv run dpcompat plugin list

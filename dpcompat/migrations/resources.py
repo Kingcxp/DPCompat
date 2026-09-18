@@ -38,8 +38,10 @@ class FilteredLootRule:
                 if not isinstance(node, dict):
                     return node
                 result = {key: walk(item) for key, item in node.items()}
-                function_id = result.get("function")
-                is_filtered = function_id in {"minecraft:filtered", "filtered"}
+                # 26.3 renamed the loot-function discriminator from ``function`` to ``type``.
+                # Accept both so this rule works whichever side of the boundary runs first.
+                function_id = result.get("function") or result.get("type")
+                is_filtered = isinstance(function_id, str) and function_id in {"minecraft:filtered", "filtered"}
                 if not is_filtered:
                     return result
                 if upgrading and "modifier" in result and "on_pass" not in result:
