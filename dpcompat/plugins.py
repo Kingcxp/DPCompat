@@ -350,6 +350,8 @@ _BUILTIN_PLUGIN_DEFS: tuple[tuple[str, str, str, tuple[str, ...], str], ...] = (
             "item-components.swing-animation-split@121.0",
             "item-components.map-color-removed@121.0",
             "item-components.pot-decorations-faces@121.0",
+            "command.block-entity-pot-sherds@121.0",
+            "structure.block-entity-pot-sherds@121.0",
         ),
         "26.3",
     ),
@@ -372,6 +374,13 @@ _BUILTIN_PLUGIN_DEFS: tuple[tuple[str, str, str, tuple[str, ...], str], ...] = (
         "26.3 战利品表结构",
         "把战利品函数/条件/奖池的判别字段迁移到 type、condition 与 modifier。",
         ("loot.function-condition-and-pool-keys@121.0",),
+        "26.3",
+    ),
+    (
+        "number-providers@121.0",
+        "26.3 数字 provider",
+        "重命名五个内联 provider 类型并同步 operands；number_provider 注册表拆分无法静态判定，升级阻断。",
+        ("number-provider.sum-to-add@121.0",),
         "26.3",
     ),
     (
@@ -556,6 +565,13 @@ _BUILTIN_PLUGIN_L10N: dict[str, dict[str, tuple[str, str]]] = {
         "en": (
             "26.3 loot schema",
             "Move loot function, condition, and pool discriminators to type, condition, and modifier.",
+        )
+    },
+    "number-providers@121.0": {
+        "en": (
+            "26.3 number providers",
+            "Rename the five inline provider types and their operands field; the number_provider "
+            "registry split cannot be decided statically and blocks the upgrade.",
         )
     },
     "worldgen@121.0": {

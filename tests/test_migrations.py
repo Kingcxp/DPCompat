@@ -35,8 +35,11 @@ from dpcompat.migrations.structures import StructureEntityNbtRule
 from dpcompat.migrations.text import TextComponentRule
 from dpcompat.migrations.wilderness import (
     BedRuleFieldsRule,
+    BlockEntitySherdsNbtRule,
+    BlockEntitySherdsSnbtRule,
     LootSchemaKeysRule,
     MapColorRemovalRule,
+    NumberProviderSumRule,
     PotDecorationsFacesRule,
     SwingAnimationSplitRule,
     TrimMaterialPaletteRule,
@@ -1380,6 +1383,202 @@ class WildernessBoundRuleTests(unittest.TestCase):
             entries = table["pools"][0]["entries"]
             self.assertEqual(entries[0]["conditions"], [{"condition": "minecraft:time_check", "value": 1000}])
             self.assertEqual(entries[1]["conditions"], [{"condition": "minecraft:random_chance", "chance": 0.5}])
+
+    def test_sum_number_provider_becomes_add(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [101, 1])
+            write(
+                root,
+                "data/demo/loot_table/t.json",
+                json.dumps(
+                    {
+                        "type": "minecraft:block",
+                        "pools": [{"rolls": {"type": "minecraft:sum", "summands": [1, 2]}, "entries": []}],
+                    }
+                ),
+            )
+            rule = NumberProviderSumRule()
+            self._run(root, rule, [101, 1], [121, 0])
+            value = json.loads(self._text(root, "data/demo/loot_table/t.json"))
+            self.assertEqual(value["pools"][0]["rolls"], {"type": "minecraft:add", "inputs": [1, 2]})
+            self._run(root, rule, [121, 0], [101, 1])
+            value = json.loads(self._text(root, "data/demo/loot_table/t.json"))
+            self.assertEqual(value["pools"][0]["rolls"], {"type": "minecraft:sum", "summands": [1, 2]})
+
+    def test_number_provider_rule_ignores_same_named_density_functions(self) -> None:
+        # ``add`` is also a level-based value type and a density function; only a provider
+        # carries the ``inputs`` field.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [121, 0])
+            write(
+                root,
+                "data/demo/enchantment/riptide.json",
+                json.dumps(
+                    {"effects": {"minecraft:x": {"type": "minecraft:add", "value": {"type": "minecraft:linear"}}}}
+                ),
+            )
+            write(
+                root,
+                "data/demo/worldgen/density_function/x.json",
+                json.dumps({"type": "minecraft:add", "left": 1, "right": 2}),
+            )
+            before = [
+                self._text(root, "data/demo/enchantment/riptide.json"),
+                self._text(root, "data/demo/worldgen/density_function/x.json"),
+            ]
+            result = NumberProviderSumRule().apply(
+                MigrationContext(root, PackFormat(121, 0), PackFormat(101, 1), BuildPolicy())
+            )
+            self.assertEqual([item.code for item in result.diagnostics], [])
+            self.assertEqual(
+                [
+                    self._text(root, "data/demo/enchantment/riptide.json"),
+                    self._text(root, "data/demo/worldgen/density_function/x.json"),
+                ],
+                before,
+            )
+
+    def test_number_provider_registry_split_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [101, 1])
+            write(
+                root, "data/demo/number_provider/demo/low.json", json.dumps({"type": "minecraft:constant", "value": 1})
+            )
+            diagnostics = self._run(root, NumberProviderSumRule(), [101, 1], [121, 0])
+            self.assertEqual({item.code for item in diagnostics}, {"number-provider-registry-split"})
+
+    def test_block_entity_sherds_convert_in_data_merge_block(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [101, 1])
+            write(
+                root,
+                "data/demo/function/load.mcfunction",
+                'data merge block 1 2 3 {id:"minecraft:decorated_pot",'
+                'sherds:["minecraft:brick","minecraft:flow_pottery_sherd"]}\n'
+                'data merge block ~ ~ ~ {id:"minecraft:chest",Items:[]}\n',
+            )
+            rule = BlockEntitySherdsSnbtRule()
+            self._run(root, rule, [101, 1], [121, 0])
+            text = self._text(root, "data/demo/function/load.mcfunction")
+            self.assertIn(
+                'sherds:{back:{id:"minecraft:brick"},left:{id:"minecraft:flow_pottery_sherd"},'
+                'right:{id:"minecraft:brick"},front:{id:"minecraft:brick"}}',
+                text,
+            )
+            self.assertIn('{id:"minecraft:chest",Items:[]}', text)
+            self._run(root, rule, [121, 0], [101, 1])
+            text = self._text(root, "data/demo/function/load.mcfunction")
+            self.assertIn(
+                'sherds:["minecraft:brick","minecraft:flow_pottery_sherd","minecraft:brick","minecraft:brick"]',
+                text,
+            )
+
+    def test_block_entity_sherds_macro_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [101, 1])
+            write(root, "data/demo/function/load.mcfunction", "data merge block 1 2 3 $(nbt)\n")
+            diagnostics = self._run(root, BlockEntitySherdsSnbtRule(), [101, 1], [121, 0])
+            self.assertEqual({item.code for item in diagnostics}, {"macro-block-nbt-needs-runtime-parse"})
+
+    def test_block_entity_sherds_convert_in_structure_nbt(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = make_pack(Path(temp_dir), [101, 1])
+            path = root / "data/demo/structure/t.nbt"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            nbt.dump_path(
+                path,
+                nbt.NbtDocument(
+                    "",
+                    nbt.NbtTag(
+                        nbt.TAG_COMPOUND,
+                        {
+                            "blocks": nbt.NbtTag(
+                                nbt.TAG_LIST,
+                                nbt.NbtList(
+                                    nbt.TAG_COMPOUND,
+                                    [
+                                        nbt.NbtTag(
+                                            nbt.TAG_COMPOUND,
+                                            {
+                                                "nbt": nbt.NbtTag(
+                                                    nbt.TAG_COMPOUND,
+                                                    {
+                                                        "id": nbt.NbtTag(nbt.TAG_STRING, "minecraft:decorated_pot"),
+                                                        "sherds": nbt.NbtTag(
+                                                            nbt.TAG_LIST,
+                                                            nbt.NbtList(
+                                                                nbt.TAG_STRING,
+                                                                [
+                                                                    nbt.NbtTag(nbt.TAG_STRING, "minecraft:brick"),
+                                                                    nbt.NbtTag(
+                                                                        nbt.TAG_STRING,
+                                                                        "minecraft:guster_pottery_sherd",
+                                                                    ),
+                                                                ],
+                                                            ),
+                                                        ),
+                                                    },
+                                                )
+                                            },
+                                        )
+                                    ],
+                                ),
+                            )
+                        },
+                    ),
+                ),
+            )
+            rule = BlockEntitySherdsNbtRule()
+            self._run(root, rule, [101, 1], [121, 0])
+            self.assertEqual(
+                self._structure_face_ids(path),
+                {
+                    "back": "minecraft:brick",
+                    "left": "minecraft:guster_pottery_sherd",
+                    "right": "minecraft:brick",
+                    "front": "minecraft:brick",
+                },
+            )
+            self._run(root, rule, [121, 0], [101, 1])
+            self.assertEqual(
+                self._structure_sherd_list(path),
+                [
+                    "minecraft:brick",
+                    "minecraft:guster_pottery_sherd",
+                    "minecraft:brick",
+                    "minecraft:brick",
+                ],
+            )
+
+    @staticmethod
+    def _structure_sherds(path: Path) -> nbt.NbtTag:
+        loaded = nbt.load_path(path)
+        root = nbt.compound(loaded.root)
+        assert root is not None
+        blocks = nbt.list_values(root["blocks"])
+        assert blocks is not None
+        entry = nbt.compound(blocks[0])
+        assert entry is not None
+        block_entity = nbt.compound(entry["nbt"])
+        assert block_entity is not None
+        return block_entity["sherds"]
+
+    def _structure_face_ids(self, path: Path) -> dict[str, str]:
+        sherds = nbt.compound(self._structure_sherds(path))
+        assert sherds is not None
+        faces: dict[str, str] = {}
+        for face, tag in sherds.items():
+            payload = nbt.compound(tag)
+            assert payload is not None
+            item_id = payload["id"].value
+            assert isinstance(item_id, str)
+            faces[face] = item_id
+        return faces
+
+    def _structure_sherd_list(self, path: Path) -> list[str]:
+        entries = nbt.list_values(self._structure_sherds(path))
+        assert entries is not None
+        return [str(tag.value) for tag in entries]
 
     def test_worldgen_registry_move_is_refused(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

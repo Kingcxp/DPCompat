@@ -20,8 +20,11 @@ from .structures import StructureEntityNbtRule
 from .text import TextComponentRule
 from .wilderness import (
     BedRuleFieldsRule,
+    BlockEntitySherdsNbtRule,
+    BlockEntitySherdsSnbtRule,
     LootSchemaKeysRule,
     MapColorRemovalRule,
+    NumberProviderSumRule,
     PotDecorationsFacesRule,
     SwingAnimationSplitRule,
     TrimMaterialPaletteRule,
@@ -50,6 +53,9 @@ BUILTIN_RULES: tuple[MigrationRule, ...] = (
     BedRuleFieldsRule(),
     TrimMaterialPaletteRule(),
     LootSchemaKeysRule(),
+    NumberProviderSumRule(),
+    BlockEntitySherdsSnbtRule(),
+    BlockEntitySherdsNbtRule(),
     WorldgenSchemaRule(),
     StrictJsonRule(),
 )

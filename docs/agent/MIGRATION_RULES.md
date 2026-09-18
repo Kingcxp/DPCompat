@@ -33,7 +33,7 @@ class SomeRule:
 | 88 → 94.1（1.21.11） | 全部 gamerule 改 namespaced snake_case，含特殊改名表与 3 条反义规则（disableElytraMovementCheck→elytra_movement_check、disablePlayerMovementCheck→player_movement_check、disableRaids→raids）；doFireTick/allowFireTicksAwayFromPlayer 移除 → fire_spread_radius_around_player；worldborder set/add/warning time 时间参数秒→tick（s/d 后缀）；filtered.modifier→on_pass（新增 on_fail）；Environment Attributes（dimension/biome 的 attributes、timelines、skybox、cardinal_light、has_fixed_time） | `gamerules.py`（含完整特殊改名表）、`worldborder.py`、`resources.py`(FilteredLootRule)、`scanner.py`（环境属性阻断） |
 | 94.1 → 101.1（26.1） | world clock 注册表（data/ns/world_clock/）；/time [of clock]；timeline 文件 + clock 字段；time_check + clock；test_environment time_of_day→clock_time{clock,time}；dimension_type + default_clock/has_ender_dragon_fight；配方：result 短形式字符串、烹饪类 result 支持 count、stonecutting/smithing 移除 group、show_notification 扩展到多类型、crafting_dye/crafting_imbue 新增、crafting_special_mapcloning 移除（并入 crafting_transmute）、transmute + material_count/add_material_count_to_result | `resources.py`(TimelineClockRule/TestEnvironmentClockRule)、`recipes.py`(Recipe26Rule/TimeCheckClockRule)、`scanner.py`（default_clock 阻断）；`features.json` 登记了 `time of/pause/resume/rate` 前缀、scanner 另拦 `query <timeline>`（旧字面量仅 day/daytime/gametime） |
 | 101.1 → 107.1（26.2） | sulfur_cube_archetype 注册表；实体谓词改组件映射风格；HurtByTimestamp 移除 | `scanner.py`（resource-too-new 阻断）、`features.json` |
-| 107.1 → 121.0（26.3） | swing_animation 拆分/合并；map_color 移除；pot_decorations 列表↔面映射（旧列表顺序 back,left,right,front，取自原版 `PotDecorations.ordered()`）；bed_rule explodes→destroy_on_use；trim_material asset_name→palette_id；战利品 function↔type、conditions↔condition、functions↔modifier、tag name↔items、set_loot_table name↔loot_table_id | `wilderness.py`（7 条规则）、`features.json`、`scanner.py`；worldgen 重写整体阻断（`worldgen-schema-rewrite-required`），`minecraft:reference`/`value_check`/`block_state_property`/`exploration_map` 与数字 provider 改名只诊断 |
+| 107.1 → 121.0（26.3） | swing_animation 拆分/合并；map_color 移除；pot_decorations 列表↔面映射（旧列表顺序 back,left,right,front，取自原版 `PotDecorations.ordered()`），含 `data merge block` SNBT 与 structure NBT 里的方块实体 `sherds`；bed_rule explodes→destroy_on_use；trim_material asset_name→palette_id；战利品 function↔type、conditions↔condition、functions↔modifier、tag name↔items、set_loot_table name↔loot_table_id；数字 provider `sum`(summands)↔`add`(inputs) | `wilderness.py`（10 条规则）、`features.json`、`scanner.py`；worldgen 重写整体阻断（`worldgen-schema-rewrite-required`），`number_provider` 注册表拆分阻断（`number-provider-registry-split`），`minecraft:reference`/`value_check`/`block_state_property`/`exploration_map` 只诊断 |
 
 上表是 2026-09 复核结果（对照 minecraft.wiki 与 Mojang 正式版说明）。**新增规则前必须重新查证**，流程见下文。
 
@@ -65,10 +65,10 @@ class SomeRule:
 
 ## 已知缺口（2026-09 复核，未修，勿静默扩 scope）
 
-- 26.3 数字 provider 改名（`sum`→`add`、`product`→`mul`、`minimum`→`min`、`maximum`→`max`、`average`→`avg`，以及 `summands`→`operands`）未做自动改写：同一个 `type` 字典在战利品函数、谓词、世界生成里含义不同，静态上下文不足，未出诊断。
-- 26.3 方块实体 `minecraft:decorated_pot` 的 `sherds` 字段与命令 SNBT 里的物品组件未迁移（本仓库只改 JSON 组件映射）；`minecraft:pot_decorations` 的 JSON 形式已迁移。
-- 26.3 战利品表 `minecraft:sequence` 的 `functions` 字段名未变，因此 `functions`→`modifier` 只在奖池/条目层执行；`set_contents.entries` 内的条目只做同层重命名，未递归到嵌套生产者。
+- 26.3 战利品表 `minecraft:sequence` 的 `functions` 字段名未变，因此 `functions`→`modifier` 只在奖池/条目层执行。
+- 26.3 命令物品组件语法（如 `give @s pot[minecraft:pot_decorations=[...]]`）不迁移：完整物品组件命令文法在本仓库一直是硬边界（`scanner.py` 出 `legacy-item-component-command`）。方块实体 `sherds`（`data merge block` 与 structure NBT）已迁移。
 - 26.3 世界生成（feature/carver 注册表迁移、config 内联、密度函数字段改名与单精度求值）整体阻断，需要作者 fallback。
+- 26.3 数字 provider 只在能证明是 provider 时改写：`sum`(summands) ↔ `add`(inputs) 以 provider 专有字段为门禁，因此与密度函数、level-based value 同名的 `add`/`mul`/`min`/`max` 不会被误改；`product`/`minimum`/`maximum`/`average` 只存在于 26.3 快照，从未进入正式版，无迁移。
 - `show_item` hover 事件旧格式的 `text` 字段（1.21.5 改名 value）未处理——罕见，失败方式为遗留字段。
 - 26.2 实体谓词新格式（组件映射风格）未检测，降级时可能静默残留；HurtByTimestamp 移除未出诊断（NBT 对多余/缺失字段宽容，残留无行为影响）。两者已在 `docs/VERSION_MATRIX.md` 26.2 行对外标注。
 - `/time set/add` 在 26.1 的返回值语义变化（总流逝 tick 而非当日时间）影响 `execute store` 消费方，语法层无法静态判定，未出诊断。

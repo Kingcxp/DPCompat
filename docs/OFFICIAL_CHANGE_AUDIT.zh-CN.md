@@ -59,6 +59,8 @@
 - `trim_material` 的 `asset_name` 改名为 `palette_id`（字段名以原版 26.3 数据包的 `data/minecraft/trim_material/*.json` 为准，正式说明中的 `palette` 是简写）；`override_armor_assets` 迁往资源包 equipment asset，升级时阻断；
 - 战利品表/物品修饰器/谓词：判别字段 `function`→`type`、条件 `conditions`（列表）→`condition`（单值或 `minecraft:all_of`）、奖池 `functions`→`modifier`、`minecraft:tag` 条目 `name`→`items`、`set_loot_table` 的 `name`→`loot_table_id` 并移除已废弃的 `type`。降级时命名空间 ID 会还原为旧版 `minecraft:reference` 对象。
 
+数字 provider 的边界按一手证据收窄：26.1 正式版引入 `minecraft:sum`（字段 `summands`），26.3 用 `context_int_provider`/`context_float_provider` 取代 `number_provider`，正式版的 `minecraft:add` 读 `inputs`（取自原版 26.3 数据包 `villager_trade/*`），因此只改写 `sum`(summands) ↔ `add`(inputs)，并以 provider 专有字段为门禁——`add`/`mul`/`min`/`max` 同时是密度函数与 enchantment level-based value 的类型名，同名的那些对象一律不动。`product`/`minimum`/`maximum`/`average` 只出现在 26.3 快照（snap9），从未进入任何正式版，因此没有对应迁移。方块实体 `minecraft:decorated_pot` 的 `sherds` 字段与组件同形状，`data merge block` 的 SNBT 与 structure NBT 都按同一面顺序迁移。
+
 明确**拒绝**的部分：26.3 把 `worldgen/configured_feature`/`configured_carver` 搬到 `worldgen/feature`/`carver` 并把 config 内联，同时新增 `block_state_provider`/`material_rule`/`material_condition`，还把密度函数改为单精度求值——语法可以改写但生成结果不等价，因此 `worldgen.registry-and-config@121.0` 只出诊断、要求作者 fallback。被移除的 `minecraft:reference`、`minecraft:value_check`、`minecraft:block_state_property`、语义改变的 `minecraft:exploration_map`，以及数字 provider 改名（`sum`→`add` 等）同样只诊断不猜测。
 
 来源：[26.3 正式版说明](https://www.minecraft.net/en-us/article/minecraft-java-edition-26-3)。

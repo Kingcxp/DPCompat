@@ -26,5 +26,8 @@ BUILTIN_RULE_SOURCES: dict[str, tuple[str, ...]] = {
     "environment-attributes.bed-rule-fields@121.0": (_MC + "26-3",),
     "registry.trim-material-palette-id@121.0": (_MC + "26-3",),
     "loot.function-condition-and-pool-keys@121.0": (_MC + "26-3",),
+    "number-provider.sum-to-add@121.0": (_MC + "26-3",),
+    "command.block-entity-pot-sherds@121.0": (_MC + "26-3",),
+    "structure.block-entity-pot-sherds@121.0": (_MC + "26-3",),
     "worldgen.registry-and-config@121.0": (_MC + "26-3",),
 }
