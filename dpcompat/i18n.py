@@ -61,6 +61,26 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "plugin.kind_builtin": {"zh-CN": "内置", "en": "built-in"},
     "plugin.detail_origin_file": {"zh-CN": "文件插件（{kind}）", "en": "file plugin ({kind})"},
     "plugin.detail_origin_builtin": {"zh-CN": "内置插件", "en": "built-in plugin"},
+    "common.cancel": {"zh-CN": "取消", "en": "Cancel"},
+    "plugin.install_failed": {"zh-CN": "安装失败：{error}", "en": "Install failed: {error}"},
+    "plugin.uninstall_failed": {"zh-CN": "卸载失败：{error}", "en": "Uninstall failed: {error}"},
+    "plugin.template_failed": {"zh-CN": "创建模板失败：{error}", "en": "Template creation failed: {error}"},
+    "plugin.install_conflicts_builtin": {
+        "zh-CN": "插件 id {id} 与内置插件冲突，请改名后再安装",
+        "en": "Plugin id {id} conflicts with a built-in plugin; rename it before installing",
+    },
+    "plugin.confirm_replace_title": {"zh-CN": "替换插件", "en": "Replace plugin"},
+    "plugin.confirm_replace": {
+        "zh-CN": "插件 {id} 已安装，是否用所选文件替换它?",
+        "en": "Plugin {id} is already installed. Replace it with the selected file?",
+    },
+    "plugin.replace": {"zh-CN": "替换", "en": "Replace"},
+    "plugin.confirm_uninstall_title": {"zh-CN": "卸载插件", "en": "Uninstall plugin"},
+    "plugin.confirm_uninstall": {
+        "zh-CN": "确定卸载插件 {id}? 此操作无法撤销。",
+        "en": "Uninstall plugin {id}? This cannot be undone.",
+    },
+    "plugin.detail_path": {"zh-CN": "文件：{path}", "en": "File: {path}"},
     "plugin.detail_meta": {
         "zh-CN": "{id} · v{version} · {origin} · 目标 {target}",
         "en": "{id} · v{version} · {origin} · target {target}",
@@ -95,9 +115,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     # -- plugins screen -------------------------------------------------------------
     "plugins.title": {"zh-CN": "插件管理", "en": "Plugin Manager"},
     "plugins.hint": {
-        "zh-CN": "插件按目标版本分组：点击版本行展开该版本的插件列表，点击插件行查看它的完整文档、启用/禁用或卸载。",
+        "zh-CN": "插件按目标版本分组：点击版本行展开该版本的插件列表，点击插件行查看它的完整文档、启用/禁用或卸载。"
+        "行末的 ● 表示已启用，○ 表示已禁用。",
         "en": "Plugins are grouped by target version: click a version row to expand its plugins; "
-        "click a plugin row for its full documentation, enable/disable, or uninstall.",
+        "click a plugin row for its full documentation, enable/disable, or uninstall. "
+        "The trailing ● marks an enabled plugin and ○ a disabled one.",
     },
     "plugins.install": {"zh-CN": "安装插件文件...", "en": "Install plugin file..."},
     "plugins.template": {"zh-CN": "创建插件模板...", "en": "Create plugin template..."},
@@ -205,6 +227,33 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Data pack path does not exist: {path}",
     },
     "migration.plan_only": {"zh-CN": "仅规划（不写出 ZIP）", "en": "Plan only (no ZIP output)"},
+    "migration.confirm_quit_title": {"zh-CN": "退出 DPCompat", "en": "Quit DPCompat"},
+    "migration.confirm_quit": {
+        "zh-CN": "迁移仍在进行，现在退出会中断构建并可能留下不完整的 ZIP。确定退出?",
+        "en": "A migration is still running. Quitting now interrupts the build and can leave a "
+        "truncated ZIP. Quit anyway?",
+    },
+    "market.installing": {"zh-CN": "正在安装…", "en": "Installing…"},
+    "migration.universal": {
+        "zh-CN": "生成通用 overlay 包",
+        "en": "Build the universal overlay pack",
+    },
+    "migration.output_name_placeholder": {
+        "zh-CN": "输出文件名前缀（默认 datapack）",
+        "en": "Output file name prefix (default datapack)",
+    },
+    "migration.build_scope": {
+        "zh-CN": "目标 {count} 个：{targets}",
+        "en": "Building {count} target(s): {targets}",
+    },
+    "migration.detect_failed": {
+        "zh-CN": "检测失败（{path}）：{error}",
+        "en": "Detection failed for {path}: {error}",
+    },
+    "migration.config_failed": {
+        "zh-CN": "配置文件无法读取，已使用默认设置：{error}",
+        "en": "The config file could not be loaded; using defaults: {error}",
+    },
     "migration.plan_note": {
         "zh-CN": "仅规划模式：已评估所有目标，但未写出 ZIP。",
         "en": "Plan-only mode: every target was evaluated, but no ZIP was written.",
@@ -242,6 +291,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "market.back": {"zh-CN": "返回", "en": "Back"},
     "market.category_all": {"zh-CN": "全部分类", "en": "All categories"},
     "market.installed_mark": {"zh-CN": "（已安装）", "en": " (installed)"},
+    "market.loading": {"zh-CN": "正在加载插件市场…", "en": "Loading the plugin marketplace…"},
+    "market.partial_failed": {
+        "zh-CN": "部分仓库无法访问：{error}",
+        "en": "Some repositories could not be reached: {error}",
+    },
     "market.load_failed": {
         "zh-CN": "无法加载插件市场：{error}",
         "en": "Failed to load the plugin marketplace: {error}",
@@ -279,12 +333,29 @@ def tr(language: str, key: str, **kwargs: object) -> str:
 
 
 def resolve_language(override: str | None = None) -> str:
-    """Return a valid language code from an explicit override, env, prefs, or the default."""
+    """Return a valid language code from an explicit override, env, prefs, or the default.
+
+    When nothing was chosen yet, the POSIX locale decides: a non-Chinese locale gets the
+    English interface instead of dropping the user into a language they may not read well
+    enough to find the switch.
+    """
 
     for candidate in (override, os.environ.get(ENV_LANGUAGE)):
         if candidate in LANGUAGES:
             return candidate
-    return load_preferred_language()
+    if PREFS_FILE.is_file():
+        return load_preferred_language()
+    return DEFAULT_LANGUAGE if _locale_is_chinese() else "en"
+
+
+def _locale_is_chinese() -> bool:
+    """Return whether the POSIX locale environment asks for a Chinese interface."""
+
+    for variable in ("LC_ALL", "LC_MESSAGES", "LANG"):
+        value = os.environ.get(variable)
+        if value:
+            return value.lower().startswith("zh")
+    return True
 
 
 def load_preferred_language() -> str:

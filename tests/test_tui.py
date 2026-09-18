@@ -11,7 +11,7 @@ from dpcompat.ui import DpCompatApp
 from dpcompat.ui.app import PluginDetailScreen, PluginsScreen, TemplateScreen, VersionSection
 from dpcompat.versions import PROFILES
 from textual.containers import Vertical
-from textual.widgets import Button, Checkbox, Input, Markdown, Static
+from textual.widgets import Button, Checkbox, Input, Markdown, RichLog, Static
 
 
 def _run(coro) -> None:
@@ -318,7 +318,7 @@ RULES = (DemoRule(),)
                         break
                 assert any("Market Demo" in str(button.label) for button in rows)
                 # Open the detail page and install.
-                await pilot.click("#market-demo-market-88")
+                await pilot.click("#market-tui-demo-market-88")
                 await pilot.pause(0.3)
                 assert isinstance(app.screen, MarketDetailScreen)
                 await pilot.click("#market-install")
@@ -355,9 +355,13 @@ def test_tui_language_switch_re_renders_and_persists(
     monkeypatch.setenv("DPCOMPAT_PLUGIN_DIR", str(tmp_path / "plugins"))
     from dpcompat import i18n
 
-    # Redirect the preference file so the test never touches the real home directory.
+    # Redirect the preference file so the test never touches the real home directory,
+    # and pin the locale so the first-run default is deterministic.
     monkeypatch.setattr(i18n, "PREFS_DIR", tmp_path)
     monkeypatch.setattr(i18n, "PREFS_FILE", tmp_path / "prefs.toml")
+    monkeypatch.setenv("LANG", "zh_CN.UTF-8")
+    monkeypatch.delenv("LC_ALL", raising=False)
+    monkeypatch.delenv("LC_MESSAGES", raising=False)
 
     async def scenario() -> None:
         app = DpCompatApp()
@@ -427,5 +431,86 @@ def test_tui_starts_with_localized_bindings_in_english(
             await pilot.pause()
             plugins = descriptions(app.screen)
             assert plugins["escape"] == "Back"
+
+    _run(scenario())
+
+
+def test_tab_moves_focus_on_every_screen(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tab traversal must survive the localized binding override.
+
+    ``_set_bindings`` used to replace the whole binding map, which silently removed
+    Textual's inherited tab/shift+tab focus bindings.
+    """
+
+    monkeypatch.setenv("DPCOMPAT_PLUGIN_DIR", str(tmp_path / "plugins"))
+
+    async def scenario() -> None:
+        app = DpCompatApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            first = app.focused
+            await pilot.press("tab")
+            await pilot.pause()
+            assert app.focused is not None and app.focused is not first
+            await pilot.press("shift+tab")
+            await pilot.pause()
+            assert app.focused is first
+
+    _run(scenario())
+
+
+def test_language_switch_on_a_detail_page_keeps_the_app_alive(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Switching language while a detail page is open must rebuild it, not crash it."""
+
+    monkeypatch.setenv("DPCOMPAT_PLUGIN_DIR", str(tmp_path / "plugins"))
+
+    async def scenario() -> None:
+        app = DpCompatApp(language="en")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            store = PluginStore()
+            info = next(item for item in store.list_plugins() if item.id == "gamerules@94.1")
+            app.push_screen(PluginDetailScreen(info, store))
+            await pilot.pause()
+            assert app.screen.query_one("#detail-meta", Static) is not None
+            await pilot.press("l")
+            await pilot.pause(0.3)
+            assert app.screen.query_one("#detail-meta", Static) is not None
+            assert len(app.screen.query("#detail-meta")) == 1
+
+    _run(scenario())
+
+
+def test_market_rows_are_unique_per_repository() -> None:
+    """Two repositories may publish one plugin id without breaking the list."""
+
+    from dpcompat.market import MarketPlugin, MarketPluginMeta
+    from dpcompat.plugins import BUILTIN_PLUGINS
+    from dpcompat.ui.app import MarketRow
+
+    info = BUILTIN_PLUGINS[0]
+    meta = MarketPluginMeta()
+    first = MarketRow(MarketPlugin(info=info, repo="alpha", category="1.21.9", meta=meta), "en", False)
+    second = MarketRow(MarketPlugin(info=info, repo="beta", category="1.21.9", meta=meta), "en", False)
+    assert first.id is not None and second.id is not None
+    assert first.id != second.id
+    assert "alpha" in first.id and "beta" in second.id
+    assert info.id.replace("@", "-") in first.id
+
+
+def test_build_validation_is_logged_and_focuses_the_field(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A pre-flight failure must leave a trace in the log and focus the offending input."""
+
+    monkeypatch.setenv("DPCOMPAT_PLUGIN_DIR", str(tmp_path / "plugins"))
+
+    async def scenario() -> None:
+        app = DpCompatApp(language="en")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            log = app.screen.query_one("#build-log", RichLog)
+            await pilot.press("ctrl+b")  # the keyboard build shortcut
+            await pilot.pause()
+            assert app.screen.query_one("#pack-path-input", Input) is app.focused
+            assert any("data pack" in line.text.lower() or "路径" in line.text for line in log.lines)
 
     _run(scenario())

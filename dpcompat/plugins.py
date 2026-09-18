@@ -754,6 +754,20 @@ class PluginStore:
 
     # -- install / uninstall ----------------------------------------------------
 
+    def inspect(self, path: Path) -> PluginInfo:
+        """Validate one plugin file without installing it.
+
+        The TUI uses this to detect an id collision before asking the user whether to
+        replace an existing plugin, instead of parsing an install error message.
+        """
+
+        resolved = path.expanduser().resolve()
+        if not resolved.is_file():
+            raise ValueError(f"Plugin file does not exist: {resolved}")
+        if resolved.suffix.lower() not in {".py", ".json"}:
+            raise ValueError("A plugin file must end with .py or .json")
+        return self._inspect_file(resolved)
+
     def install(self, path: Path, *, force: bool = False) -> PluginInfo:
         """Validate and copy a Python or JSON plugin file into the store."""
 

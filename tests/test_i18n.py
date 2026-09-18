@@ -52,3 +52,18 @@ def test_env_language_overrides_prefs_and_explicit_wins(tmp_path: Path, monkeypa
 def test_save_preferred_language_rejects_unknown_codes() -> None:
     with pytest.raises(ValueError, match="Unknown language"):
         i18n.save_preferred_language("de")
+
+
+def test_first_run_default_follows_the_locale(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(i18n, "PREFS_FILE", tmp_path / "prefs.toml")
+    monkeypatch.delenv(i18n.ENV_LANGUAGE, raising=False)
+    monkeypatch.delenv("LC_ALL", raising=False)
+    monkeypatch.delenv("LC_MESSAGES", raising=False)
+    monkeypatch.setenv("LANG", "en_US.UTF-8")
+    assert i18n.resolve_language() == "en"
+    monkeypatch.setenv("LANG", "zh_CN.UTF-8")
+    assert i18n.resolve_language() == "zh-CN"
+    # A persisted choice still wins over the locale.
+    i18n.save_preferred_language("en")
+    monkeypatch.setenv("LANG", "zh_CN.UTF-8")
+    assert i18n.resolve_language() == "en"

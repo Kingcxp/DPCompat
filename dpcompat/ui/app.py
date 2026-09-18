@@ -90,6 +90,20 @@ def _strip_markdown(text: str) -> str:
     return _MARKDOWN_STRIP.sub("", text).replace("](", " (") if text else text
 
 
+def _merge_bindings(current: BindingsMap | None, bindings: list[Binding]) -> BindingsMap:
+    """Return ``current`` with ``bindings`` overriding entries that share a key.
+
+    Assigning a fresh map would drop Textual's inherited bindings, which include the
+    ``tab``/``shift+tab`` focus traversal installed on ``Screen``/``App``; losing them
+    silently disables keyboard navigation on every screen.
+    """
+
+    replaced = {binding.key for binding in bindings}
+    inherited_keys = {} if current is None else current.key_to_bindings
+    inherited = BindingsMap.from_keys({key: value for key, value in inherited_keys.items() if key not in replaced})
+    return BindingsMap.merge([inherited, BindingsMap(bindings)])
+
+
 class LocalizedScreen:
     """Mixin giving every screen typed access to the localized application.
 
@@ -109,13 +123,14 @@ class LocalizedScreen:
         return str(self.app.tr(key, **kwargs))
 
     def _set_bindings(self, bindings: list[Binding]) -> None:
-        """Replace this instance's footer bindings with localized descriptions.
+        """Override this instance's footer bindings with localized descriptions.
 
         ``self._bindings`` is a per-instance copy of the class-level merged map, so
-        assigning it only affects this screen and survives a language switch.
+        assigning it only affects this screen and survives a language switch.  The
+        override keeps every inherited binding the class-level map carries.
         """
 
-        self._bindings = BindingsMap(bindings)
+        self._bindings = _merge_bindings(getattr(self, "_merged_bindings", None), bindings)
         self.app.refresh_bindings()
 
 
@@ -143,7 +158,7 @@ class FilePickerScreen(LocalizedScreen, Screen[Path | None]):
 
         yield Header(show_clock=False)
         with Vertical(id="picker-root"):
-            yield Static(self._t(self._title_key), classes="screen-title")
+            yield Static(self._t(self._title_key), id="picker-title", classes="screen-title")
             yield Static(str(self._start), id="picker-current")
             yield DirectoryTree(self._start, id="picker-tree")
             with Horizontal(classes="button-row"):
@@ -155,7 +170,14 @@ class FilePickerScreen(LocalizedScreen, Screen[Path | None]):
     def _apply_bindings(self) -> None:
         """Install footer bindings localized to the active language."""
 
-        self._set_bindings([Binding("escape", "cancel", self._t("picker.cancel"))])
+        self._set_bindings(
+            [
+                Binding("escape", "cancel", self._t("picker.cancel")),
+                Binding("u", "up", self._t("picker.up")),
+                Binding("backspace", "up", self._t("picker.up"), show=False),
+                Binding("alt+up", "up", self._t("picker.up"), show=False),
+            ]
+        )
 
     def on_mount(self) -> None:
         """Start with localized bindings instead of the class-level Chinese defaults."""
@@ -165,6 +187,7 @@ class FilePickerScreen(LocalizedScreen, Screen[Path | None]):
     def refresh_language(self) -> None:
         """Re-render localized labels after a language switch."""
 
+        self.query_one("#picker-title", Static).update(self._t(self._title_key))
         self.query_one("#picker-up", Button).label = self._t("picker.up")
         self.query_one("#picker-pick", Button).label = self._t("picker.pick")
         self.query_one("#picker-cancel", Button).label = self._t("picker.cancel")
@@ -197,7 +220,7 @@ class FilePickerScreen(LocalizedScreen, Screen[Path | None]):
             self.notify(self._t("picker.directory_required"), severity="warning")
             return
         if self._allowed_suffixes and current.suffix.lower() not in self._allowed_suffixes:
-            allowed = "、".join(self._allowed_suffixes)
+            allowed = " / ".join(self._allowed_suffixes)
             self.notify(self._t("picker.suffix_only", suffixes=allowed), severity="warning")
             return
         self.dismiss(current)
@@ -210,13 +233,84 @@ class FilePickerScreen(LocalizedScreen, Screen[Path | None]):
     def _on_pick(self) -> None:
         self._pick()
 
-    @on(Button.Pressed, "#picker-up")
-    def _on_up(self) -> None:
+    def action_up(self) -> None:
+        """Move the browser one directory up."""
+
         current = self._current()
         parent = (current or self._start).parent
         tree = self.query_one("#picker-tree", DirectoryTree)
         tree.path = parent
         self.query_one("#picker-current", Static).update(str(parent))
+
+    @on(Button.Pressed, "#picker-up")
+    def _on_up(self) -> None:
+        self.action_up()
+
+
+class ConfirmScreen(LocalizedScreen, Screen[bool]):
+    """Small yes/no modal for actions that cannot be undone."""
+
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [Binding("escape", "cancel", "取消")]
+
+    def __init__(self, *, title_key: str, message: str, confirm_key: str) -> None:
+        super().__init__()
+        self._title_key = title_key
+        self._message = message
+        self._confirm_key = confirm_key
+
+    def compose(self) -> ComposeResult:
+        """Render the question with a destructive confirm and a cancel button."""
+
+        yield Header(show_clock=False)
+        with Vertical(id="confirm-root"):
+            yield Static(self._t(self._title_key), id="confirm-title", classes="screen-title")
+            yield Static(self._message, id="confirm-message")
+            with Horizontal(classes="button-row"):
+                yield Button(self._t(self._confirm_key), id="confirm-yes", variant="error")
+                yield Button(self._t("common.cancel"), id="confirm-no")
+        yield Footer()
+
+    def _apply_bindings(self) -> None:
+        """Install footer bindings localized to the active language."""
+
+        self._set_bindings(
+            [
+                Binding("escape", "cancel", self._t("common.cancel")),
+                Binding("y", "confirm", self._t(self._confirm_key)),
+            ]
+        )
+
+    def on_mount(self) -> None:
+        """Start with localized bindings and focus the safe choice."""
+
+        self._apply_bindings()
+        self.query_one("#confirm-no", Button).focus()
+
+    def refresh_language(self) -> None:
+        """Re-render localized labels after a language switch."""
+
+        self.query_one("#confirm-title", Static).update(self._t(self._title_key))
+        self.query_one("#confirm-yes", Button).label = self._t(self._confirm_key)
+        self.query_one("#confirm-no", Button).label = self._t("common.cancel")
+        self._apply_bindings()
+
+    def action_cancel(self) -> None:
+        """Dismiss without confirming."""
+
+        self.dismiss(False)
+
+    def action_confirm(self) -> None:
+        """Dismiss with confirmation."""
+
+        self.dismiss(True)
+
+    @on(Button.Pressed, "#confirm-yes")
+    def _on_yes(self) -> None:
+        self.action_confirm()
+
+    @on(Button.Pressed, "#confirm-no")
+    def _on_no(self) -> None:
+        self.action_cancel()
 
 
 class PluginItem(Button):
@@ -374,6 +468,14 @@ class PluginDetailScreen(LocalizedScreen, Screen[None]):
                 id="detail-meta",
             ),
         ]
+        if info.path:
+            widgets.append(
+                Static(
+                    self._t("plugin.detail_path", path=escape(info.path)),
+                    id="detail-path",
+                    classes="hint",
+                )
+            )
         row = Horizontal(classes="button-row")
         row.compose_add_child(
             Button(
@@ -412,13 +514,16 @@ class PluginDetailScreen(LocalizedScreen, Screen[None]):
 
         self._apply_bindings()
 
-    def refresh_language(self) -> None:
-        """Rebuild the whole page with the newly selected language."""
+    async def refresh_language(self) -> None:
+        """Rebuild the whole page with the newly selected language.
+
+        ``remove_children`` only schedules removal, so the mount must wait for it;
+        otherwise the new widgets collide with the still-registered old ids.
+        """
 
         root = self.query_one("#detail-root", Vertical)
-        root.remove_children()
-        for widget in self._detail_widgets(self._display_info()):
-            root.mount(widget)
+        await root.remove_children()
+        await root.mount_all(self._detail_widgets(self._display_info()))
         self._apply_bindings()
 
     @on(Button.Pressed, "#detail-toggle")
@@ -434,12 +539,26 @@ class PluginDetailScreen(LocalizedScreen, Screen[None]):
 
     @on(Button.Pressed, "#detail-remove")
     def _on_remove(self) -> None:
-        """Uninstall this file plugin and return to the plugin list."""
+        """Ask for confirmation, then uninstall this file plugin."""
 
+        self.app.push_screen(
+            ConfirmScreen(
+                title_key="plugin.confirm_uninstall_title",
+                message=self._t("plugin.confirm_uninstall", id=self._info.id),
+                confirm_key="plugin.uninstall",
+            ),
+            callback=self._remove_confirmed,
+        )
+
+    def _remove_confirmed(self, confirmed: bool | None) -> None:
+        """Uninstall after the user confirmed the destructive action."""
+
+        if not confirmed:
+            return
         try:
             self._store.uninstall(self._info.id)
         except ValueError as exc:
-            self.notify(str(exc), severity="error")
+            self.notify(self._t("plugin.uninstall_failed", error=exc), severity="error")
             return
         self.notify(self._t("plugin.uninstalled_notify", id=self._info.id))
         self.app.pop_screen()
@@ -508,7 +627,7 @@ class TemplateScreen(LocalizedScreen, Screen[Path | None]):
         try:
             created = scaffold_plugin_template(name, self._location, subfolder=subfolder)
         except ValueError as exc:
-            self.notify(str(exc), severity="error")
+            self.notify(self._t("plugin.template_failed", error=exc), severity="error")
             return
         self.dismiss(created)
 
@@ -619,10 +738,36 @@ class PluginsScreen(LocalizedScreen, Screen[None]):
             return
         assert self._store is not None
         try:
-            info = self._store.install(path)
+            info = self._store.inspect(path)
         except ValueError as exc:
-            self.notify(str(exc), severity="error")
+            self.notify(self._t("plugin.install_failed", error=exc), severity="error")
             return
+        existing = next((item for item in self._store.list_plugins() if item.id == info.id), None)
+        if existing is not None and existing.origin == "builtin":
+            self.notify(self._t("plugin.install_conflicts_builtin", id=info.id), severity="error")
+            return
+        if existing is not None:
+            self.app.push_screen(
+                ConfirmScreen(
+                    title_key="plugin.confirm_replace_title",
+                    message=self._t("plugin.confirm_replace", id=info.id),
+                    confirm_key="plugin.replace",
+                ),
+                callback=lambda confirmed: self._install_confirmed(path, bool(confirmed)),
+            )
+            return
+        self._install_confirmed(path, False)
+
+    def _install_confirmed(self, path: Path, replace: bool) -> None:
+        """Install (or replace) the plugin file and reveal its version group."""
+
+        assert self._store is not None
+        try:
+            info = self._store.install(path, force=replace)
+        except ValueError as exc:
+            self.notify(self._t("plugin.install_failed", error=exc), severity="error")
+            return
+        self._expanded_versions.add(info.target_version)
         self.notify(self._t("plugins.installed_notify", name=info.name, id=info.id))
         self._refresh()
 
@@ -698,7 +843,10 @@ class MarketRow(Button):
             repo=escape(plugin.repo),
         )
         label = f"[bold]{top}[/bold]{escape(mark)}\n[dim]{escape(_strip_markdown(info.description))}[/dim]"
-        super().__init__(label, id=f"market-{_widget_safe(plugin.info.id)}", classes="plugin-item")
+        # Two repositories may publish the same plugin id (a mirror or a fork), so the row
+        # id must be unique per repository to keep the list mountable.
+        row_id = f"market-{_widget_safe(plugin.repo)}-{_widget_safe(plugin.info.id)}"
+        super().__init__(label, id=row_id, classes="plugin-item")
 
 
 class MarketScreen(LocalizedScreen, Screen[None]):
@@ -714,6 +862,8 @@ class MarketScreen(LocalizedScreen, Screen[None]):
         self._categories: list[CategoryInfo] = []
         self._installed: set[str] = set()
         self._load_error: str | None = None
+        self._failures: list[str] = []
+        self._loading = False
         self._suppress_category = False
 
     def compose(self) -> ComposeResult:
@@ -730,6 +880,7 @@ class MarketScreen(LocalizedScreen, Screen[None]):
                 [(self._t("market.category_all"), "")],
                 id="market-category",
                 classes="market-category",
+                allow_blank=False,
             )
             yield VerticalScroll(id="market-list")
             with Horizontal(classes="button-row"):
@@ -756,8 +907,26 @@ class MarketScreen(LocalizedScreen, Screen[None]):
         self.query_one("#market-search-go", Button).label = self._t("market.search")
         self.query_one("#market-refresh", Button).label = self._t("market.refresh")
         self.query_one("#market-back", Button).label = self._t("market.back")
+        self._apply_category_options()
         self.call_later(self._render_list)
         self._apply_bindings()
+
+    def _apply_category_options(self) -> None:
+        """Re-apply the category labels for the active language, keeping the selection."""
+
+        select = self.query_one("#market-category", Select)
+        current = "" if select.value in (None, Select.BLANK) else str(select.value)
+        self._suppress_category = True
+        try:
+            select.set_options(
+                [
+                    (self._t("market.category_all"), ""),
+                    *[(category.display_name or category.id, category.id) for category in self._categories],
+                ]
+            )
+            select.value = current if any(current == value for _, value in select._options) else ""
+        finally:
+            self._suppress_category = False
 
     def on_screen_resume(self) -> None:
         """Load the marketplace whenever this screen becomes active.
@@ -774,6 +943,9 @@ class MarketScreen(LocalizedScreen, Screen[None]):
         selected = self.query_one("#market-category", Select).value
         category = "" if selected in (None, Select.BLANK) else str(selected)
         self._load_error = None
+        self._failures = []
+        self._loading = True
+        self.call_later(self._render_list)
         self.run_worker(
             self._load_task(query, category or None),
             thread=True,
@@ -784,14 +956,15 @@ class MarketScreen(LocalizedScreen, Screen[None]):
     async def _load_task(self, query: str | None, category: str | None) -> None:
         from ..plugins import PluginStore
 
+        failures: list[str] = []
         try:
-            categories = list_categories()
-            plugins = list_market_plugins(category=category, query=query)
+            categories = list_categories(failures=failures)
+            plugins = list_market_plugins(category=category, query=query, failures=failures)
             installed = {info.id for info in PluginStore().list_plugins()}
         except Exception as exc:
             self.app.call_from_thread(self._apply_error, str(exc))
             return
-        self.app.call_from_thread(self._apply_loaded, categories, plugins, installed)
+        self.app.call_from_thread(self._apply_loaded, categories, plugins, installed, failures)
 
     async def _apply_error(self, message: str) -> None:
         self._load_error = message
@@ -803,25 +976,24 @@ class MarketScreen(LocalizedScreen, Screen[None]):
         categories: list[CategoryInfo],
         plugins: list[MarketPlugin],
         installed: set[str],
+        failures: list[str],
     ) -> None:
         self._categories = categories
         self._plugins = plugins
         self._installed = installed
-        self._suppress_category = True
-        try:
-            self.query_one("#market-category", Select).set_options(
-                [
-                    (self._t("market.category_all"), ""),
-                    *[(category.display_name or category.id, category.id) for category in categories],
-                ]
-            )
-        finally:
-            self._suppress_category = False
+        self._failures = failures
+        self._loading = False
+        if failures and not plugins:
+            self._load_error = "; ".join(failures)
+        self._apply_category_options()
         await self._render_list()
 
     async def _render_list(self) -> None:
         box = self.query_one("#market-list", VerticalScroll)
         await box.remove_children()
+        if self._loading:
+            await box.mount(Static(self._t("market.loading"), classes="hint"))
+            return
         if self._load_error is not None:
             await box.mount(Static(self._t("market.load_failed", error=self._load_error), classes="hint"))
             return
@@ -830,6 +1002,8 @@ class MarketScreen(LocalizedScreen, Screen[None]):
             return
         for plugin in self._plugins:
             await box.mount(MarketRow(plugin, self.app.language, plugin.info.id in self._installed))
+        if self._failures:
+            await box.mount(Static(self._t("market.partial_failed", error="; ".join(self._failures)), classes="hint"))
 
     def _on_search(self) -> None:
         self._reload()
@@ -959,20 +1133,24 @@ class MarketDetailScreen(LocalizedScreen, Screen[None]):
 
         self._apply_bindings()
 
-    def refresh_language(self) -> None:
-        """Rebuild the whole page with the newly selected language."""
+    async def refresh_language(self) -> None:
+        """Rebuild the whole page with the newly selected language.
+
+        ``remove_children`` only schedules removal, so the mount must wait for it;
+        otherwise the new widgets collide with the still-registered old ids.
+        """
 
         root = self.query_one("#market-detail-root", Vertical)
-        root.remove_children()
-        for widget in self._detail_widgets(self._display_info()):
-            root.mount(widget)
-
+        await root.remove_children()
+        await root.mount_all(self._detail_widgets(self._display_info()))
         self._apply_bindings()
 
     @on(Button.Pressed, "#market-install")
     def _on_install(self) -> None:
         self._installing = True
-        self.query_one("#market-install", Button).disabled = True
+        button = self.query_one("#market-install", Button)
+        button.disabled = True
+        button.label = self._t("market.installing")
         self.run_worker(self._install_task(), thread=True, exclusive=True, group="market-install")
 
     async def _install_task(self) -> None:
@@ -996,6 +1174,7 @@ class MarketDetailScreen(LocalizedScreen, Screen[None]):
     def _reset_install_button(self) -> None:
         button = self.query_one("#market-install", Button)
         button.disabled = False
+        button.label = self._t("market.install")
         self._installing = False
 
     @on(Button.Pressed, "#market-back")
@@ -1037,6 +1216,8 @@ class MigrationScreen(LocalizedScreen, Screen[None]):
             with Horizontal(classes="field-row"):
                 yield Input(value="dist", id="output-input", placeholder=self._t("migration.output_placeholder"))
                 yield Button(self._t("migration.browse"), id="output-browse", variant="primary")
+            with Horizontal(classes="field-row"):
+                yield Input(placeholder=self._t("migration.output_name_placeholder"), id="output-name")
             with Horizontal(classes="field-row"):
                 yield Checkbox(self._t("migration.output_subfolder"), id="output-subfolder")
                 yield Input(placeholder=self._t("migration.subfolder_placeholder"), id="output-subfolder-name")
@@ -1116,6 +1297,7 @@ class MigrationScreen(LocalizedScreen, Screen[None]):
                 yield Button(self._t("migration.build"), id="build-start", variant="success")
                 yield Button(self._t("migration.detect"), id="detect-source")
                 yield Checkbox(self._t("migration.plan_only"), id="plan-only", classes="-textual-compact")
+                yield Checkbox(self._t("migration.universal"), id="universal", classes="-textual-compact")
             yield Static(self._t("migration.log_section"), classes="section-title", id="log-section")
             yield RichLog(id="build-log", markup=True, wrap=True, highlight=True)
         yield Footer()
@@ -1126,7 +1308,18 @@ class MigrationScreen(LocalizedScreen, Screen[None]):
     def _apply_bindings(self) -> None:
         """Install footer bindings localized to the active language."""
 
-        self._set_bindings([Binding("p", "open_plugins", self._t("migration.plugins"))])
+        self._set_bindings(
+            [
+                Binding("p", "open_plugins", self._t("migration.plugins")),
+                Binding("ctrl+b", "build", self._t("migration.build")),
+            ]
+        )
+
+    def action_build(self) -> None:
+        """Start a build from the keyboard."""
+
+        if not self._busy:
+            self._on_build_start()
 
     def refresh_language(self) -> None:
         """Update every label in place after a language switch."""
@@ -1142,6 +1335,7 @@ class MigrationScreen(LocalizedScreen, Screen[None]):
         self.query_one("#pack-browse", Button).label = self._t("migration.browse")
         self.query_one("#output-input", Input).placeholder = self._t("migration.output_placeholder")
         self.query_one("#output-browse", Button).label = self._t("migration.browse")
+        self.query_one("#output-name", Input).placeholder = self._t("migration.output_name_placeholder")
         self.query_one("#output-subfolder", Checkbox).label = self._t("migration.output_subfolder")
         self.query_one("#output-subfolder-name", Input).placeholder = self._t("migration.subfolder_placeholder")
         self.query_one("#targets-all", Button).label = self._t("migration.targets_all")
@@ -1153,6 +1347,7 @@ class MigrationScreen(LocalizedScreen, Screen[None]):
         self.query_one("#build-start", Button).label = self._t("migration.build")
         self.query_one("#detect-source", Button).label = self._t("migration.detect")
         self.query_one("#plan-only", Checkbox).label = self._t("migration.plan_only")
+        self.query_one("#universal", Checkbox).label = self._t("migration.universal")
         self._sync_busy_controls()
         self._apply_bindings()
 
@@ -1182,8 +1377,17 @@ class MigrationScreen(LocalizedScreen, Screen[None]):
     def on_mount(self) -> None:
         """Load the optional config, apply its target defaults, and hint at the log."""
 
-        self._config = load_config(self._config_path) if self._config_path else ProjectConfig()
+        try:
+            self._config = load_config(self._config_path) if self._config_path else ProjectConfig()
+        except (OSError, ValueError) as exc:
+            # A typo in --config must not kill the TUI; report it and keep the defaults.
+            self._config = ProjectConfig()
+            self.query_one("#build-log", RichLog).write(
+                f"[bold red]{escape(self._t('migration.config_failed', error=exc))}[/bold red]"
+            )
+            self.notify(self._t("migration.config_failed", error=exc), severity="error")
         assert self._config is not None
+        self.query_one("#universal", Checkbox).value = self._config.universal
         if self._config.targets:
             selected = set(self._config.targets)
             for profile in PROFILES:
@@ -1219,7 +1423,7 @@ class MigrationScreen(LocalizedScreen, Screen[None]):
         if self.query_one("#output-subfolder", Checkbox).value:
             name = self.query_one("#output-subfolder-name", Input).value.strip()
             if not _SUBFOLDER_NAME_RE.fullmatch(name):
-                self.notify(self._t("migration.invalid_subfolder"), severity="error")
+                self._reject("migration.invalid_subfolder", "#output-subfolder-name")
                 return None
             output = output / name
         return output
@@ -1280,7 +1484,7 @@ class MigrationScreen(LocalizedScreen, Screen[None]):
 
     @on(Button.Pressed, "#quit-app")
     def _on_quit(self) -> None:
-        self.app.exit()
+        self.app.action_quit()
 
     def _sync_busy_controls(self) -> None:
         """Reflect the busy state on the build/detect controls."""
@@ -1291,6 +1495,12 @@ class MigrationScreen(LocalizedScreen, Screen[None]):
         detect = self.query_one("#detect-source", Button)
         detect.disabled = self._busy
         detect.label = self._t("migration.detect_running" if self._busy else "migration.detect")
+
+    @property
+    def busy(self) -> bool:
+        """Whether a build or detection worker currently owns the controls."""
+
+        return self._busy
 
     def _begin_busy(self) -> None:
         """Claim the build/detect controls (main thread only)."""
@@ -1309,12 +1519,28 @@ class MigrationScreen(LocalizedScreen, Screen[None]):
 
         pack_path = self.query_one("#pack-path-input", Input).value.strip()
         if not pack_path:
-            self.notify(self._t("migration.need_pack"), severity="error")
+            self._reject("migration.need_pack", "#pack-path-input")
             return None
         if not Path(pack_path).exists():
-            self.notify(self._t("migration.pack_missing", path=pack_path), severity="error")
+            self._reject("migration.pack_missing", "#pack-path-input", path=pack_path)
             return None
         return pack_path
+
+    def _reject(self, key: str, widget_id: str, **kwargs: object) -> None:
+        """Report a pre-flight failure durably and move focus to the offending field.
+
+        A five-second toast is easy to miss and leaves no trace, so the message is also
+        written to the build log and the field is focused.
+        """
+
+        message = self._t(key, **kwargs)
+        self.notify(message, severity="error")
+        log = self.query_one("#build-log", RichLog)
+        log.write(f"[bold red]{escape(message)}[/bold red]")
+        with suppress(Exception):  # A hidden or absent widget must not mask the message.
+            widget = self.query_one(widget_id)
+            widget.focus()
+            widget.scroll_visible()
 
     @on(Button.Pressed, "#detect-source")
     def _on_detect(self) -> None:
@@ -1338,26 +1564,28 @@ class MigrationScreen(LocalizedScreen, Screen[None]):
 
         write(f"[bold cyan]{app.tr('migration.detect_running')}[/bold cyan]")
         try:
-            with materialize_source(Path(pack_path)) as root:
-                detection = detect_pack(root)
-        except Exception as exc:  # Surface any failure in the log instead of crashing the UI.
-            message = app.tr("migration.build_failed", error=exc)
-            write(f"[bold red]{escape(message)}[/bold red]")
-            app.call_from_thread(self.notify, message, severity="error")
-            return
+            try:
+                with materialize_source(Path(pack_path)) as root:
+                    detection = detect_pack(root)
+            except Exception as exc:  # Surface any failure in the log instead of crashing the UI.
+                message = app.tr("migration.detect_failed", error=exc, path=pack_path)
+                write(f"[bold red]{escape(message)}[/bold red]")
+                app.call_from_thread(self.notify, message, severity="error")
+                return
+            write(
+                app.tr(
+                    "migration.source_line",
+                    format=detection.source_format,
+                    candidates=", ".join(detection.candidates) or "—",
+                )
+            )
+            for diagnostic in detection.diagnostics:
+                write(self._diagnostic_line(diagnostic))
         finally:
-            # The app may be shutting down while a build is still running.
+            # Release the controls only after the log is complete, and still release them
+            # if the app is shutting down mid-run.
             with suppress(RuntimeError):
                 self.app.call_from_thread(self._end_busy)
-        write(
-            app.tr(
-                "migration.source_line",
-                format=detection.source_format,
-                candidates=", ".join(detection.candidates) or "—",
-            )
-        )
-        for diagnostic in detection.diagnostics:
-            write(self._diagnostic_line(diagnostic))
 
     @on(Button.Pressed, "#build-start")
     def _on_build_start(self) -> None:
@@ -1366,17 +1594,29 @@ class MigrationScreen(LocalizedScreen, Screen[None]):
             return
         targets = self._selected_targets()
         if not targets:
-            self.notify(self._t("migration.need_target"), severity="error")
+            self._reject("migration.need_target", "#targets-section")
             return
         output = self._resolve_output()
         if output is None:
             return
         plan_only = self.query_one("#plan-only", Checkbox).value
+        assert self._config is not None
+        universal = self.query_one("#universal", Checkbox).value
+        output_name = self.query_one("#output-name", Input).value.strip() or self._config.output_name
         log = self.query_one("#build-log", RichLog)
         log.clear()
         self._begin_busy()
         self.run_worker(
-            self._build_task(log, pack_path, output, targets, self._policy(), plan_only),
+            self._build_task(
+                log,
+                pack_path,
+                output,
+                targets,
+                self._policy(),
+                plan_only,
+                universal,
+                output_name,
+            ),
             thread=True,
             exclusive=True,
             group="build",
@@ -1390,6 +1630,8 @@ class MigrationScreen(LocalizedScreen, Screen[None]):
         targets: list[VersionProfile],
         policy: BuildPolicy,
         plan_only: bool,
+        universal: bool,
+        output_name: str,
     ) -> None:
         """Blocking build executed by the threaded worker."""
 
@@ -1402,74 +1644,97 @@ class MigrationScreen(LocalizedScreen, Screen[None]):
             app.call_from_thread(log.write, line)
 
         write(f"[bold cyan]{app.tr('migration.build_started')}[/bold cyan]")
-        try:
-            registry = create_effective_registry(self._config)
-            with materialize_source(Path(pack_path)) as root:
-                detection, results, universal = compile_pack(
-                    root,
-                    targets,
-                    output,
-                    self._config.universal,
-                    policy=policy,
-                    fallbacks=self._config.fallbacks,
-                    output_name=self._config.output_name,
-                    emit_archives=not plan_only,
-                    rules=registry.rules(),
-                )
-        except Exception as exc:  # Surface any failure in the log instead of crashing the UI.
-            message = app.tr("migration.build_failed", error=exc)
-            write(f"[bold red]{escape(message)}[/bold red]")
-            app.call_from_thread(self.notify, message, severity="error")
-            return
-        finally:
-            # The app may be shutting down while a build is still running.
-            with suppress(RuntimeError):
-                self.app.call_from_thread(self._end_busy)
-
         write(
             app.tr(
-                "migration.source_line",
-                format=detection.source_format,
-                candidates=", ".join(detection.candidates) or "—",
+                "migration.build_scope",
+                count=len(targets),
+                targets=", ".join(profile.game_version for profile in targets),
             )
         )
-        for diagnostic in detection.diagnostics:
-            write(self._diagnostic_line(diagnostic))
-        for result in results:
-            status = app.tr("migration.status_ok" if result.successful else "migration.status_failed")
-            style = "bold green" if result.successful else "bold red"
-            artifact = result.archive.name if result.archive else (result.sha256 or "—")
-            version_part = app.tr(
-                "migration.target_format",
-                version=result.profile.game_version,
-                format=result.profile.pack_format,
+        try:
+            try:
+                if not plan_only and self._config.clean_output and output.exists():
+                    # Mirror the CLI: stale artifacts from earlier runs must not sit next
+                    # to the new ones, where they can be shipped by mistake.
+                    prefix = output_name + "-"
+                    for path in output.iterdir():
+                        if path.is_file() and (
+                            path.name.startswith(prefix) or path.name == "compatibility-report.json"
+                        ):
+                            path.unlink()
+                registry = create_effective_registry(self._config)
+                with materialize_source(Path(pack_path)) as root:
+                    detection, results, universal_archive = compile_pack(
+                        root,
+                        targets,
+                        output,
+                        universal,
+                        policy=policy,
+                        fallbacks=self._config.fallbacks,
+                        output_name=output_name,
+                        emit_archives=not plan_only,
+                        rules=registry.rules(),
+                    )
+            except Exception as exc:  # Surface any failure in the log instead of crashing the UI.
+                message = app.tr("migration.build_failed", error=exc)
+                write(f"[bold red]{escape(message)}[/bold red]")
+                app.call_from_thread(self.notify, message, severity="error")
+                return
+
+            write(
+                app.tr(
+                    "migration.source_line",
+                    format=detection.source_format,
+                    candidates=", ".join(detection.candidates) or "—",
+                )
             )
-            summary = f"[{style}]{escape(status)}[/{style}] {escape(version_part)}"
-            write(f"{summary} {escape(artifact)}")
-            for diagnostic in result.diagnostics:
+            for diagnostic in detection.diagnostics:
                 write(self._diagnostic_line(diagnostic))
-        if universal:
-            write(f"[bold]{escape(app.tr('migration.universal_line', path=str(universal)))}[/bold]")
+            for result in results:
+                status = app.tr("migration.status_ok" if result.successful else "migration.status_failed")
+                style = "bold green" if result.successful else "bold red"
+                if result.archive is not None:
+                    artifact = str(result.archive)
+                elif result.sha256:
+                    artifact = result.sha256[:12]
+                else:
+                    artifact = "—"
+                version_part = app.tr(
+                    "migration.target_format",
+                    version=result.profile.game_version,
+                    format=result.profile.pack_format,
+                )
+                summary = f"[{style}]{escape(status)}[/{style}] {escape(version_part)}"
+                write(f"{summary} {escape(artifact)}")
+                for diagnostic in result.diagnostics:
+                    write(self._diagnostic_line(diagnostic))
+            if universal_archive:
+                write(f"[bold]{escape(app.tr('migration.universal_line', path=str(universal_archive)))}[/bold]")
 
-        ok = sum(1 for result in results if result.successful)
-        failed = len(results) - ok
-        if failed:
-            summary_key = "migration.build_summary_partial"
-            write(f"[bold yellow]{escape(app.tr(summary_key, ok=ok, failed=failed))}[/bold yellow]")
-        else:
-            summary_key = "migration.build_summary_ok"
-            write(f"[bold green]{escape(app.tr(summary_key, count=len(results)))}[/bold green]")
+            ok = sum(1 for result in results if result.successful)
+            failed = len(results) - ok
+            if failed:
+                summary_key = "migration.build_summary_partial"
+                write(f"[bold yellow]{escape(app.tr(summary_key, ok=ok, failed=failed))}[/bold yellow]")
+            else:
+                summary_key = "migration.build_summary_ok"
+                write(f"[bold green]{escape(app.tr(summary_key, count=len(results)))}[/bold green]")
 
-        if plan_only:
-            write(app.tr("migration.plan_note"))
-        else:
-            report = build_report(detection, results, universal, policy=policy)
-            report["rule_registry"] = [item.model_dump(mode="json") for item in registry.info()]
-            report_path = output.resolve() / "compatibility-report.json"
-            write_report(report_path, report)
-            write(app.tr("migration.report_line", path=str(report_path)))
-        message = app.tr("migration.build_done") if not failed else app.tr(summary_key, ok=ok, failed=failed)
-        app.call_from_thread(self.notify, message, severity="warning" if failed else "information")
+            if plan_only:
+                write(app.tr("migration.plan_note"))
+            else:
+                report = build_report(detection, results, universal_archive, policy=policy)
+                report["rule_registry"] = [item.model_dump(mode="json") for item in registry.info()]
+                report_path = output.resolve() / "compatibility-report.json"
+                write_report(report_path, report)
+                write(app.tr("migration.report_line", path=str(report_path)))
+            message = app.tr("migration.build_done") if not failed else app.tr(summary_key, ok=ok, failed=failed)
+            app.call_from_thread(self.notify, message, severity="warning" if failed else "information")
+        finally:
+            # Release the controls only after the whole report is written, and still
+            # release them if the app is shutting down mid-run.
+            with suppress(RuntimeError):
+                self.app.call_from_thread(self._end_busy)
 
     @staticmethod
     def _diagnostic_line(diagnostic: Diagnostic) -> str:
@@ -1497,7 +1762,7 @@ class DpCompatApp(App[None]):
         height: 3;
         content-align: center middle;
     }
-    #migration-root, #plugins-root, #picker-root, #template-root {
+    #migration-root, #plugins-root, #picker-root, #template-root, #confirm-root {
         padding: 1 2;
     }
     .screen-title {
@@ -1689,6 +1954,22 @@ class DpCompatApp(App[None]):
                     await result
         self.refresh_bindings()
 
+    async def action_quit(self) -> None:
+        """Quit the app, asking first while a build is still running."""
+
+        for screen in reversed(self.screen_stack):
+            if isinstance(screen, MigrationScreen) and screen.busy:
+                self.push_screen(
+                    ConfirmScreen(
+                        title_key="migration.confirm_quit_title",
+                        message=self.tr("migration.confirm_quit"),
+                        confirm_key="migration.quit",
+                    ),
+                    callback=lambda confirmed: self.exit() if confirmed else None,
+                )
+                return
+        self.exit()
+
     def on_mount(self) -> None:
         """Push the migration screen as the default view."""
 
@@ -1699,9 +1980,10 @@ class DpCompatApp(App[None]):
     def _apply_shell_bindings(self) -> None:
         """Install the global q/l bindings localized to the active language."""
 
-        self._bindings = BindingsMap(
+        self._bindings = _merge_bindings(
+            self._merged_bindings,
             [
                 Binding("q", "quit", self.tr("app.quit")),
                 Binding("l", "cycle_language", self.tr("app.language")),
-            ]
+            ],
         )

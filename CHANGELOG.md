@@ -16,6 +16,14 @@
 - Migration coverage: downgrading `click_event` actions `custom`/`show_dialog` (introduced with format 80 / 1.21.6) now fails closed instead of silently emitting events older releases cannot parse; `/test` (format 71) and the world-clock `/time of|pause|resume|rate` forms plus `query <timeline>` (format 101.1) are registered as command-too-new evidence in `features.json`/scanner.
 - Marketplace installs verify that the downloaded file declares the requested plugin id before writing it into the store; broken catalog entries are skipped with a warning instead of hiding the whole repository or disappearing silently.
 
+### Changed
+
+- TUI: pressing `l` or the top-bar language button no longer replaces each screen's whole binding map, which had silently removed Textual's `tab`/`shift+tab` focus traversal — keyboard navigation now works on every screen. Switching the language while a plugin or marketplace detail page is open rebuilds it in place instead of crashing the app with `DuplicateIds`.
+- TUI: pre-flight failures (missing pack path, no target, invalid output subfolder) are written to the build log and move focus to the offending field instead of appearing only as a five-second toast; a build that fails now names the pack it inspected; the build scope and per-target artifact paths are logged; a marketplace load shows a loading hint; the market row is keyed by repository so two repositories may publish one plugin id.
+- TUI: a `--config` file that cannot be read is reported in the UI and the defaults are used instead of killing the app at startup; a running build asks for confirmation before `q`/Quit exits it; uninstalling a plugin and replacing an installed one ask for confirmation first, and install/uninstall/template failures are shown in the active language.
+- TUI: the output file-name prefix and the universal overlay pack are configurable from the form, stale generated artifacts are removed before a real build like the CLI does, `Ctrl+B` starts a build, `u`/`Backspace` move the file picker up one level, Enter in the pack-path field starts a build, and the first-run language follows the POSIX locale when nothing was chosen yet.
+- TUI: the file picker title and the marketplace category labels re-localize with the language switch, and the plugin list explains the `●`/`○` status glyph and shows an installed plugin's file path on its detail page.
+
 ### Fixed
 
 - Build policy: a rule's own compatibility record is now enforced, not only its diagnostics. A declarative rule declaring `lossy`/`unsupported`/`unknown`, or a fallback recorded as `emulated` under `allow_emulated = false`, previously published a target anyway; such a target now fails closed with `policy-denied-migration`.

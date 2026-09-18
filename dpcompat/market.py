@@ -316,14 +316,20 @@ def _catalog_entries(repo: RepoSpec) -> list[tuple[CategoryInfo, str, PluginInfo
     return entries
 
 
-def list_categories(repos: list[RepoSpec] | None = None) -> list[CategoryInfo]:
-    """Return the union of categories declared by the enabled repositories."""
+def list_categories(repos: list[RepoSpec] | None = None, *, failures: list[str] | None = None) -> list[CategoryInfo]:
+    """Return the union of categories declared by the enabled repositories.
+
+    ``failures`` collects one message per unreachable repository so a caller can tell
+    "nothing matches" apart from "the network is down".
+    """
 
     seen: dict[str, CategoryInfo] = {}
     for repo in [item for item in (repos or load_repos()) if item.enabled]:
         try:
             catalog = fetch_catalog(repo)
-        except MarketError:
+        except MarketError as exc:
+            if failures is not None:
+                failures.append(f"{repo.name}: {exc}")
             continue  # an unreachable repository must not hide the others
         for category in catalog.categories:
             seen.setdefault(category.id, category)
@@ -336,8 +342,13 @@ def list_market_plugins(
     repo_name: str | None = None,
     category: str | None = None,
     query: str | None = None,
+    failures: list[str] | None = None,
 ) -> list[MarketPlugin]:
-    """Browse repositories; ``query`` matches id, name, description, tags, target."""
+    """Browse repositories; ``query`` matches id, name, description, tags, target.
+
+    ``failures`` collects one message per unreachable repository; see
+    :func:`list_categories`.
+    """
 
     repos = [item for item in (repos or load_repos()) if item.enabled]
     if repo_name:
@@ -347,7 +358,9 @@ def list_market_plugins(
     for repo in repos:
         try:
             entries = _catalog_entries(repo)
-        except MarketError:
+        except MarketError as exc:
+            if failures is not None:
+                failures.append(f"{repo.name}: {exc}")
             continue  # an unreachable repository must not hide the others
         for cat, plugin_id, info, meta in entries:
             if category and cat.id != category:
